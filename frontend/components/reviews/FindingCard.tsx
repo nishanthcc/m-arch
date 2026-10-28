@@ -36,6 +36,21 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onViewEvidenc
             >
               Agent: {finding.agent_id}
             </span>
+            {finding.agent_id === 'code_agent' && (
+              <span
+                className="mono"
+                style={{
+                  fontSize: '10px',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  color: '#10b981',
+                  fontWeight: 600,
+                }}
+              >
+                Gemini
+              </span>
+            )}
           </div>
           <h4 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
             {finding.title}

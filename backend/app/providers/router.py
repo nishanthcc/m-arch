@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.providers.base import BaseLLMProvider, ProviderMessage, ProviderResponse
 from app.providers.groq import GroqProvider
 from app.providers.ollama import OllamaProvider
+from app.providers.gemini import GeminiProvider
 
 logger = logging.getLogger(__name__)
 
@@ -11,12 +12,15 @@ class ModelRouter:
     def __init__(self):
         self.groq = GroqProvider()
         self.ollama = OllamaProvider()
+        self.gemini = GeminiProvider()
 
     def get_provider_by_name(self, name: str) -> BaseLLMProvider:
         if name.lower() == "groq":
             return self.groq
         elif name.lower() == "ollama":
             return self.ollama
+        elif name.lower() == "gemini":
+            return self.gemini
         raise ValueError(f"Unknown provider '{name}'")
 
     async def route_chat(
@@ -26,13 +30,43 @@ class ModelRouter:
         json_mode: bool = False,
         temperature: float = 0.2,
         agent_role: Optional[str] = None,
-        override_mode: Optional[Literal["Auto", "Groq", "Ollama", "Hybrid"]] = None,
+        override_mode: Optional[Literal["Auto", "Groq", "Ollama", "Hybrid", "Gemini"]] = None,
         override_model: Optional[str] = None,
     ) -> ProviderResponse:
         mode = override_mode or settings.AI_MODE
 
-        # 1. Manual Groq Mode
-        if mode == "Groq":
+        # Dedicated routing rule: Code Review Agent uses Gemini Free API Key
+        is_code_agent = bool(agent_role and "code" in agent_role.lower())
+        if is_code_agent and self.gemini.is_configured() and override_mode not in ("Groq", "Ollama"):
+            try:
+                logger.info(
+                    f"Routing code reviewing agent ({agent_role}) to dedicated Gemini provider ({settings.GEMINI_MODEL})"
+                )
+                return await self.gemini.generate_chat(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    json_mode=json_mode,
+                    temperature=temperature,
+                    model=override_model or settings.GEMINI_MODEL,
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"Dedicated Gemini provider failed for code agent ({exc}). Falling back to router default.",
+                    exc_info=True,
+                )
+
+        # 1. Manual Gemini Mode
+        if mode == "Gemini":
+            if not self.gemini.is_configured():
+                raise RuntimeError(
+                    "Mode is set to 'Gemini', but GEMINI_API_KEY is not configured in backend/.env"
+                )
+            return await self.gemini.generate_chat(
+                messages, system_prompt, json_mode, temperature, model=override_model
+            )
+
+        # 2. Manual Groq Mode
+        elif mode == "Groq":
             if not self.groq.is_configured():
                 raise RuntimeError(
                     "Mode is set to 'Groq', but GROQ_API_KEY is not configured in backend/.env"
@@ -41,7 +75,7 @@ class ModelRouter:
                 messages, system_prompt, json_mode, temperature, model=override_model
             )
 
-        # 2. Manual Ollama Mode
+        # 3. Manual Ollama Mode
         elif mode == "Ollama":
             return await self.ollama.generate_chat(
                 messages, system_prompt, json_mode, temperature, model=override_model
@@ -115,6 +149,8 @@ class ModelRouter:
         groq_status["name"] = "Groq"
         ollama_status = await self.ollama.health_check()
         ollama_status["name"] = "Ollama"
+        gemini_status = await self.gemini.health_check()
+        gemini_status["name"] = "Gemini"
         return {
             "mode": settings.AI_MODE,
             "primary_provider": settings.AI_PRIMARY_PROVIDER,
@@ -122,6 +158,7 @@ class ModelRouter:
             "providers": {
                 "Groq": groq_status,
                 "Ollama": ollama_status,
+                "Gemini": gemini_status,
             }
         }
 

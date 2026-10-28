@@ -69,7 +69,7 @@ export const TopBar: React.FC = () => {
                 width: '7px',
                 height: '7px',
                 borderRadius: '50%',
-                backgroundColor: health.providers.Groq.available || health.providers.Ollama.available
+                backgroundColor: health.providers.Groq?.available || health.providers.Ollama?.available || health.providers.Gemini?.available
                   ? 'var(--status-completed)'
                   : 'var(--severity-critical)',
               }}

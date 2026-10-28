@@ -267,21 +267,21 @@ class GitHubSourceImporter:
                 access_token=access_token
             )
 
-            # Step 4: Index sources & create Snapshot record
-            job.status = "indexing"
-            job.progress_percent = 85
-            job.status_message = f"Processing {accepted_count} files into source inventory..."
+            # Step 4: Index sources, create Snapshot record & run deterministic profiling
+            job.status = "snapshotting"
+            job.progress_percent = 70
+            job.status_message = f"Processing {accepted_count} files into immutable snapshot..."
             await session.commit()
 
             # Compute aggregate source hash
             hasher = hashlib.sha256()
             total_bytes = 0
 
-            # Delete previous project sources for replacement snapshot
-            existing_sources_stmt = select(Source).where(Source.project_id == project_id)
-            existing_sources = (await session.execute(existing_sources_stmt)).scalars().all()
-            for es in existing_sources:
-                await session.delete(es)
+            # Mark previous snapshots as not current (preserves historical review citations)
+            prev_snaps_stmt = select(SourceSnapshot).where(SourceSnapshot.project_id == project_id)
+            prev_snaps = (await session.execute(prev_snaps_stmt)).scalars().all()
+            for ps in prev_snaps:
+                ps.is_current = False
 
             # Create new Source records
             created_sources = []
@@ -327,6 +327,22 @@ class GitHubSourceImporter:
             )
             session.add(snapshot)
 
+            # Step 5: Profile Project
+            job.status = "profiling"
+            job.progress_percent = 85
+            job.status_message = "Analyzing source architecture, frameworks, and routes..."
+            await session.commit()
+
+            from app.services.profiling.profiler import project_profiler
+            profile_data = project_profiler.analyze_snapshot(
+                snapshot_id=snapshot_id,
+                project_id=project_id,
+                sources=created_sources,
+                snapshot_dir=snapshot_storage,
+                user_context=project.user_context or {}
+            )
+            await project_profiler.save_or_update_profile(session, project_id, snapshot_id, profile_data)
+
             # Update Project metadata
             project.source_count = accepted_count
             project.storage_path = str(snapshot_storage)
@@ -342,6 +358,7 @@ class GitHubSourceImporter:
             job.files_accepted = accepted_count
             job.files_skipped = skipped_count
             job.total_size_bytes = total_bytes
+            job.snapshot_id = snapshot_id
             await session.commit()
 
             return {

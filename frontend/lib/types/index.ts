@@ -1,5 +1,16 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'informational';
-export type VerificationStatus = 'tested' | 'runtime_confirmed' | 'static_analysis' | 'inference' | 'manual_review_required' | 'not_tested';
+export type VerificationStatus =
+  | 'verified'
+  | 'partially_supported'
+  | 'unsupported'
+  | 'duplicate'
+  | 'not_verifiable'
+  | 'tested'
+  | 'runtime_confirmed'
+  | 'static_analysis'
+  | 'inference'
+  | 'manual_review_required'
+  | 'not_tested';
 export type TaskStatus = 'waiting' | 'running' | 'completed' | 'failed' | 'timed_out';
 export type AIMode = 'Auto' | 'Groq' | 'Ollama' | 'Hybrid';
 export type AgentRuntimeState = 'available' | 'busy' | 'unavailable' | 'paused' | 'misconfigured';
@@ -8,13 +19,134 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
-  status: 'created' | 'indexing' | 'ready' | 'error';
+  status: 'created' | 'indexing' | 'ready' | 'error' | 'needs_attention';
   source_count: number;
   chunk_count: number;
   indexing_metadata?: Record<string, any>;
   current_snapshot_id?: string;
   repo_url?: string;
   current_commit_sha?: string;
+  user_context?: {
+    purpose?: string;
+    deployment_env?: string;
+    sensitive_data?: string;
+    intended_users?: string;
+    review_goals?: string;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: string;
+  status: 'detected' | 'inferred' | 'unverified';
+  details?: string;
+  evidence?: {
+    file_path?: string;
+    line?: number;
+    excerpt?: string;
+  };
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relationship: string;
+  status: 'detected' | 'inferred' | 'unverified';
+  label: string;
+}
+
+export interface ArchitectureGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface ProjectProfile {
+  id: string;
+  project_id: string;
+  snapshot_id: string;
+  languages: Record<string, {
+    language: string;
+    file_count: number;
+    line_count: number;
+    byte_count: number;
+    line_percentage: number;
+    byte_percentage: number;
+    sample_files: string[];
+  }>;
+  frameworks: Array<{
+    name: string;
+    version: string;
+    category: string;
+    status: 'detected' | 'inferred' | 'unknown';
+    evidence?: {
+      file_path?: string;
+      line?: number;
+      excerpt?: string;
+    };
+  }>;
+  application_type: string;
+  app_type_status: 'detected' | 'inferred' | 'user_provided' | 'unknown';
+  likely_purpose?: string;
+  entrypoints: Array<{
+    file_path: string;
+    file_name: string;
+    status: string;
+    evidence?: any;
+  }>;
+  modules: any[];
+  services: Array<{
+    name: string;
+    file_path: string;
+    category: string;
+    status: string;
+    evidence?: any;
+  }>;
+  routes: Array<{
+    method: string;
+    path: string;
+    handler_file: string;
+    line: number;
+    status: string;
+    evidence?: any;
+  }>;
+  database_technologies: Array<{
+    name: string;
+    status: string;
+    evidence?: any;
+  }>;
+  dependency_manifests: Array<{
+    file_path: string;
+    manifest_type: string;
+    line_count: number;
+    status: string;
+    lockfile_present: boolean;
+    evidence?: any;
+  }>;
+  test_frameworks: Array<{
+    framework: string;
+    status: string;
+    test_directories: string[];
+    evidence?: any;
+  }>;
+  deployment_config: Array<{
+    type: string;
+    file_path: string;
+    status: string;
+    evidence?: any;
+  }>;
+  architecture_graph: ArchitectureGraph;
+  unsupported_technologies: any[];
+  user_context?: {
+    purpose?: string;
+    deployment_env?: string;
+    sensitive_data?: string;
+    intended_users?: string;
+    review_goals?: string;
+  };
   created_at: string;
   updated_at: string;
 }
@@ -45,8 +177,13 @@ export interface GitHubImportJob {
   repo_url: string;
   ref_name?: string;
   resolved_commit_sha?: string;
+  current_step?: string;
   files_accepted: number;
   files_skipped: number;
+  files_failed?: number;
+  chunks_created?: number;
+  snapshot_id?: string;
+  skipped_details?: Array<any>;
   total_size_bytes: number;
   error_message?: string;
   created_at: string;
@@ -135,12 +272,23 @@ export interface Review {
   commit_sha?: string;
   evidence_verification_summary?: {
     verified_count?: number;
+    partially_supported_count?: number;
+    unsupported_count?: number;
+    duplicate_count?: number;
+    not_verifiable_count?: number;
     rejected_count?: number;
     citation_coverage_score?: number;
+    files_analyzed?: number;
+    files_skipped?: number;
+    total_files?: number;
+    coverage_statement?: string;
     conflicts_identified?: Array<any>;
     prompt_version?: string;
+    audited_at?: string;
   };
   tasks: AgentTask[];
+  skipped_agents?: Array<{ agent_id?: string; agent?: string; name?: string; reason: string }>;
+  presentation_views?: Record<string, { markdown: string; html: string; summary?: string; action_items?: string[] } | any>;
   created_at: string;
   updated_at: string;
 }
@@ -152,6 +300,7 @@ export interface ReviewReport {
   status: string;
   commit_sha?: string;
   source_snapshot_id?: string;
+  presentation_mode?: 'simple' | 'developer' | 'professional' | 'executive';
   summary?: string;
   limitations?: string;
   total_findings: number;
@@ -159,6 +308,7 @@ export interface ReviewReport {
   findings: Finding[];
   agent_traces: AgentTask[];
   evidence_verification_summary?: Record<string, any>;
+  presentation_views?: Record<string, { markdown: string; html: string }>;
   markdown_report: string;
   html_report: string;
 }
@@ -200,6 +350,8 @@ export interface ProvidersHealth {
   providers: {
     Groq: ProviderStatus;
     Ollama: ProviderStatus;
+    Gemini?: ProviderStatus;
+    [key: string]: ProviderStatus | undefined;
   };
 }
 
@@ -209,6 +361,8 @@ export interface AppSettings {
   fallback_provider: 'Groq' | 'Ollama';
   groq_configured: boolean;
   groq_model: string;
+  gemini_configured?: boolean;
+  gemini_model?: string;
   ollama_base_url: string;
   ollama_model: string;
   embedding_model: string;
@@ -243,20 +397,29 @@ export interface SecurityKnowledgeSource {
   updated_at: string;
 }
 
+export interface MetricRatio {
+  numerator: number;
+  denominator: number;
+  percentage: number | null;
+  formatted: string;
+}
+
 export interface SystemMetrics {
   has_enough_data: boolean;
   message?: string;
+  project_id?: string | null;
+  project_name?: string | null;
   total_reviews: number;
   total_agent_tasks?: number;
   total_import_jobs?: number;
-  citation_coverage?: number;
-  citation_correctness?: number;
+  citation_coverage?: MetricRatio | number | null;
+  citation_correctness?: MetricRatio | number | null;
   unsupported_claim_count?: number;
-  agent_completion_rate?: number;
-  agent_partial_failure_recovery_rate?: number;
-  provider_fallback_rate?: number;
-  import_success_rate?: number;
-  avg_review_duration_seconds?: number;
+  agent_completion_rate?: MetricRatio | number | null;
+  agent_partial_failure_recovery_rate?: MetricRatio | number | null;
+  provider_fallback_rate?: MetricRatio | number | null;
+  import_success_rate?: MetricRatio | number | null;
+  avg_review_duration_seconds?: number | null;
 }
 
 export interface EvaluationDataset {
@@ -270,11 +433,14 @@ export interface EvaluationDataset {
 export interface EvaluationRun {
   id: string;
   dataset_id: string;
+  snapshot_id?: string;
+  dataset_version?: string;
   name: string;
   status: string;
   provider_mode: string;
   metrics: Record<string, any>;
   sample_results: Array<Record<string, any>>;
+  execution_summary?: Record<string, any>;
   elapsed_seconds: number;
   created_at: string;
 }

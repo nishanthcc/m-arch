@@ -13,6 +13,8 @@ async def get_settings():
         "fallback_provider": settings.AI_FALLBACK_PROVIDER,
         "groq_configured": settings.is_groq_configured(),
         "groq_model": settings.GROQ_MODEL,
+        "gemini_configured": settings.is_gemini_configured(),
+        "gemini_model": settings.GEMINI_MODEL,
         "ollama_base_url": settings.OLLAMA_BASE_URL,
         "ollama_model": settings.OLLAMA_MODEL,
         "embedding_model": settings.EMBEDDING_MODEL,

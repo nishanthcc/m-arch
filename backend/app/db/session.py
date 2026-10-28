@@ -43,18 +43,28 @@ async def init_db():
                 );
             """))
 
-            # Automatic SQLite column migrations for v1.1.0
+            # Automatic SQLite column migrations for v1.1.0 & v1.2.0
             migrations = [
                 ("projects", "current_snapshot_id", "VARCHAR(36)"),
                 ("projects", "repo_url", "VARCHAR(512)"),
                 ("projects", "current_commit_sha", "VARCHAR(64)"),
+                ("projects", "user_context", "JSON"),
                 ("sources", "snapshot_id", "VARCHAR(36)"),
                 ("reviews", "source_snapshot_id", "VARCHAR(36)"),
                 ("reviews", "commit_sha", "VARCHAR(64)"),
                 ("reviews", "evidence_verification_summary", "JSON"),
+                ("reviews", "skipped_agents", "JSON"),
+                ("reviews", "presentation_views", "JSON"),
                 ("agent_tasks", "prompt_id", "VARCHAR(100)"),
                 ("agent_tasks", "prompt_version", "VARCHAR(20)"),
                 ("agent_tasks", "prompt_hash", "VARCHAR(64)"),
+                ("project_import_jobs", "files_failed", "INTEGER DEFAULT 0"),
+                ("project_import_jobs", "chunks_created", "INTEGER DEFAULT 0"),
+                ("project_import_jobs", "snapshot_id", "VARCHAR(36)"),
+                ("project_import_jobs", "skipped_details", "JSON"),
+                ("evaluation_runs", "snapshot_id", "VARCHAR(36)"),
+                ("evaluation_runs", "dataset_version", "VARCHAR(20)"),
+                ("evaluation_runs", "execution_summary", "JSON"),
             ]
             for tbl, col, col_type in migrations:
                 try:

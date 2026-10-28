@@ -101,7 +101,7 @@ export default function SettingsPage() {
         {loading ? (
           <p className="mono">Checking provider status...</p>
         ) : health ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginTop: '12px' }}>
             {/* Groq Cloud */}
             <div
               style={{
@@ -159,6 +159,38 @@ export default function SettingsPage() {
                 )}
               </div>
             </div>
+
+            {/* Google Gemini (Dedicated Code Review Agent) */}
+            {health.providers.Gemini && (
+              <div
+                style={{
+                  padding: '16px',
+                  backgroundColor: 'var(--bg-elevated)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: '15px' }}>Gemini (Code Review Agent)</strong>
+                  <Badge variant="status" value={health.providers.Gemini.available ? 'ready' : 'waiting'}>
+                    {health.providers.Gemini.available ? 'Connected' : 'Offline / Unconfigured'}
+                  </Badge>
+                </div>
+                <div className="mono" style={{ fontSize: '12px', marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>Scope: <strong>Code Review Specialist Only</strong></div>
+                  <div>Configured: <strong>{health.providers.Gemini.configured ? 'YES (Key Present)' : 'NO'}</strong></div>
+                  <div>Active Model: <strong>{health.providers.Gemini.active_model}</strong></div>
+                  {health.providers.Gemini.latency_ms && (
+                    <div>Latency: <strong>{health.providers.Gemini.latency_ms}ms</strong></div>
+                  )}
+                  {health.providers.Gemini.error && (
+                    <div style={{ color: 'var(--severity-critical)', marginTop: '4px' }}>
+                      Notice: {health.providers.Gemini.error}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
       </Card>

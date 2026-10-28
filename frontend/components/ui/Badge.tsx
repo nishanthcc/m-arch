@@ -55,7 +55,27 @@ export const Badge: React.FC<BadgeProps> = ({
     } else {
       style = { ...style, backgroundColor: 'rgba(113, 113, 122, 0.15)', color: 'var(--status-waiting)', borderColor: 'rgba(113, 113, 122, 0.3)' };
     }
-  } else if (variant === 'verification' || variant === 'outline') {
+  } else if (variant === 'verification') {
+    if (val === 'verified') {
+      style = { ...style, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' };
+    } else if (val === 'partially_supported') {
+      style = { ...style, backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.3)' };
+    } else if (val === 'unsupported') {
+      style = { ...style, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' };
+    } else if (val === 'duplicate') {
+      style = { ...style, backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', borderColor: 'rgba(168, 85, 247, 0.3)' };
+    } else if (val === 'not_verifiable') {
+      style = { ...style, backgroundColor: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', borderColor: 'rgba(148, 163, 184, 0.3)' };
+    } else {
+      style = {
+        ...style,
+        backgroundColor: 'transparent',
+        borderColor: 'var(--border-strong)',
+        color: 'var(--text-primary)',
+        fontSize: '10px',
+      };
+    }
+  } else if (variant === 'outline') {
     style = {
       ...style,
       backgroundColor: 'transparent',

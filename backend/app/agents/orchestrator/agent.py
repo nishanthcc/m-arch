@@ -30,7 +30,7 @@ class OrchestratorAgent(BaseAgent):
         self.documentation_agent = DocumentationAgent()
         self.dependency_agent = DependencyAgent()
         self.verifier_agent = EvidenceVerifierAgent()
-        self.synthesis_prompt_def = get_prompt_definition("orchestrator_synthesis_v1_1")
+        self.synthesis_prompt_def = get_prompt_definition("orchestrator_synthesis_v1_2")
 
     async def run_review(
         self,
@@ -82,32 +82,82 @@ class OrchestratorAgent(BaseAgent):
             )
         )
 
-        # 1. Determine active specialists
+        # 1. Fetch or create project profile for review snapshot
+        from app.db.models import ProjectProfile, Source
+        from app.services.profiling.profiler import project_profiler
+        prof_stmt = select(ProjectProfile).where(
+            ProjectProfile.project_id == project_id,
+            ProjectProfile.snapshot_id == review.source_snapshot_id
+        )
+        profile_obj = (await session.execute(prof_stmt)).scalar_one_or_none()
+        if not profile_obj:
+            # Fallback to current profile or compute
+            srcs = (await session.execute(select(Source).where(Source.project_id == project_id))).scalars().all()
+            profile_data = project_profiler.analyze_snapshot(
+                snapshot_id=review.source_snapshot_id or "snap_active",
+                project_id=project_id,
+                sources=srcs,
+                snapshot_dir=settings.STORAGE_DIR / project_id,
+                user_context=project.user_context if project else {}
+            )
+            profile_obj = await project_profiler.save_or_update_profile(
+                session, project_id, review.source_snapshot_id or "snap_active", profile_data
+            )
+
+        user_ctx = (project.user_context if project else {}) or {}
+
+        # 2. Determine active specialists & record skipped agents with reasons
+        all_candidate_agents = [
+            (self.code_agent, "code_agent", "Code & Testing Specialist"),
+            (self.security_agent, "security_agent", "Security Specialist"),
+            (self.documentation_agent, "documentation_agent", "Documentation & Deployment Specialist"),
+            (self.dependency_agent, "dependency_agent", "Dependency & Supply Chain Specialist"),
+        ]
+
         active_agents = []
-        if selected_agents:
-            if "code_agent" in selected_agents:
-                active_agents.append(self.code_agent)
-            if "security_agent" in selected_agents:
-                active_agents.append(self.security_agent)
-            if "documentation_agent" in selected_agents:
-                active_agents.append(self.documentation_agent)
-            if "dependency_agent" in selected_agents:
-                active_agents.append(self.dependency_agent)
-        else:
-            if scope in ("full", "code_only"):
-                active_agents.append(self.code_agent)
-            if scope in ("full", "security_only"):
-                active_agents.append(self.security_agent)
-            if scope in ("full", "architecture", "docs_only"):
-                active_agents.append(self.documentation_agent)
-            if scope in ("full", "dependencies", "security_only", "code_only"):
-                active_agents.append(self.dependency_agent)
+        skipped_agents = []
+
+        for agent_inst, agent_id, agent_name in all_candidate_agents:
+            if selected_agents is not None:
+                if agent_id in selected_agents:
+                    active_agents.append(agent_inst)
+                else:
+                    skipped_agents.append({
+                        "agent_id": agent_id,
+                        "name": agent_name,
+                        "reason": "Deselected by user for this review."
+                    })
+            else:
+                # Automatic profile-adaptive selection
+                if scope == "security_only" and agent_id != "security_agent":
+                    skipped_agents.append({
+                        "agent_id": agent_id,
+                        "name": agent_name,
+                        "reason": "Excluded by review scope: security_only."
+                    })
+                elif scope == "code_only" and agent_id not in ("code_agent", "dependency_agent"):
+                    skipped_agents.append({
+                        "agent_id": agent_id,
+                        "name": agent_name,
+                        "reason": "Excluded by review scope: code_only."
+                    })
+                elif scope in ("architecture", "docs_only") and agent_id not in ("documentation_agent", "code_agent"):
+                    skipped_agents.append({
+                        "agent_id": agent_id,
+                        "name": agent_name,
+                        "reason": f"Excluded by review scope: {scope}."
+                    })
+                else:
+                    active_agents.append(agent_inst)
+
+        review.skipped_agents = skipped_agents
+        await session.commit()
 
         all_findings_raw: List[Dict[str, Any]] = []
         agent_traces: List[Dict[str, Any]] = []
         partial_failure = False
 
-        # 2. Execute A2A Specialist Tasks
+        # 3. Execute A2A Specialist Tasks
         for idx, agent in enumerate(active_agents):
             if idx > 0:
                 await asyncio.sleep(2.0)
@@ -237,6 +287,8 @@ class OrchestratorAgent(BaseAgent):
             candidate_findings=all_findings_raw,
             question=question,
             session=session,
+            project_id=project_id,
+            snapshot_id=review.source_snapshot_id,
             override_mode=override_mode
         )
 
@@ -337,13 +389,70 @@ class OrchestratorAgent(BaseAgent):
         review.limitations = synthesis_res.get("limitations", "")
         review.total_findings = len(verified_findings)
         review.elapsed_seconds = round(elapsed_total, 2)
-        review.provider_used = synthesis_res.get("provider_used")
-        review.model_used = synthesis_res.get("model_used")
+
+        # Accurately reflect all AI providers used across specialist agents (e.g. Gemini for Code + Groq for Security/Synthesis)
+        distinct_providers = []
+        distinct_models = []
+        for t in (review.tasks or []):
+            if t.provider_used and t.provider_used not in distinct_providers:
+                distinct_providers.append(t.provider_used)
+            if t.model_used and t.model_used not in distinct_models:
+                distinct_models.append(t.model_used)
+
+        synth_p = synthesis_res.get("provider_used")
+        if synth_p and synth_p not in distinct_providers:
+            distinct_providers.append(synth_p)
+        synth_m = synthesis_res.get("model_used")
+        if synth_m and synth_m not in distinct_models:
+            distinct_models.append(synth_m)
+
+        review.provider_used = " + ".join(distinct_providers) if distinct_providers else (synth_p or "Auto")
+        review.model_used = " / ".join(distinct_models) if distinct_models else (synth_m or "Standard")
         review.fallback_occurred = synthesis_res.get("fallback_used", False)
+
+        # Build canonical findings and all 4 presentation views
+        from app.services.reports.exporter import generate_markdown_report, generate_html_report
+        proj_name = project.name if project else "Project"
+        prof_dict = {
+            "application_type": profile_obj.application_type if profile_obj else "Software Application"
+        }
+        raw_findings = [f_data for f_data in verified_findings]
+        raw_tasks = [
+            {
+                "agent_id": t.agent_id,
+                "task_name": t.task_name,
+                "status": t.status,
+                "execution_time_seconds": t.execution_time_seconds,
+                "provider_used": t.provider_used,
+                "model_used": t.model_used
+            }
+            for t in (review.tasks or [])
+        ]
+
+        review.presentation_views = {
+            "simple": {
+                "markdown": generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="simple", profile=prof_dict),
+                "html": generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="simple", profile=prof_dict)
+            },
+            "developer": {
+                "markdown": generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="developer", profile=prof_dict),
+                "html": generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="developer", profile=prof_dict)
+            },
+            "professional": {
+                "markdown": generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="professional", profile=prof_dict),
+                "html": generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="professional", profile=prof_dict)
+            },
+            "executive": {
+                "markdown": generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="executive", profile=prof_dict),
+                "html": generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="executive", profile=prof_dict)
+            }
+        }
+
         review.trace_metadata = {
             "partial_failure": partial_failure,
             "agent_count": len(active_agents),
             "traces": agent_traces,
+            "skipped_agents": review.skipped_agents,
             "verifier_summary": review.evidence_verification_summary,
             "orchestrator_prompt": {
                 "prompt_id": self.synthesis_prompt_def.prompt_id,
@@ -382,6 +491,15 @@ class OrchestratorAgent(BaseAgent):
         override_mode: Optional[str] = None
     ) -> Dict[str, Any]:
         """Synthesize executive findings and formal limitations using versioned prompt."""
+        if not findings:
+            return {
+                "summary": "No critical static findings detected. The analyzed source files comply with baseline quality and security standards within the scope of static analysis.",
+                "limitations": "Evaluated strictly via static code inspection and RAG retrieval. Project code was not executed. This static assessment does not certify the project as production-ready or completely secure against dynamic runtime vulnerabilities.",
+                "provider_used": "rules_engine",
+                "model_used": "deterministic_grounding",
+                "fallback_used": False
+            }
+
         findings_summary = []
         for f in findings:
             findings_summary.append(

@@ -148,7 +148,7 @@ function ReviewsContent() {
                   outline: 'none',
                 }}
               >
-                <option value="Auto">Auto (Groq Primary → Ollama Local Fallback)</option>
+                <option value="Auto">Auto (Gemini for Code Agent + Groq Primary → Ollama Fallback)</option>
                 <option value="Groq">Groq (Cloud Accelerated Only)</option>
                 <option value="Ollama">Ollama (100% Local Inference Only)</option>
                 <option value="Hybrid">Hybrid (Role-Based Task Routing)</option>
@@ -172,10 +172,10 @@ function ReviewsContent() {
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
               {[
-                { id: 'code_agent', name: 'Code & Testing Specialist', desc: 'Architecture, tests, and resilience' },
-                { id: 'security_agent', name: 'Security Specialist', desc: 'Secrets, CWE patterns, and config review' },
-                { id: 'documentation_agent', name: 'Documentation Specialist', desc: 'README, deployment, ops readiness' },
-                { id: 'dependency_agent', name: 'Dependency Specialist', desc: 'Manifests, unpinned versions, lockfiles' },
+                { id: 'code_agent', name: 'Code & Testing Specialist', desc: 'Architecture, tests, and resilience', providerTag: 'Google Gemini (gemini-3.1-flash-lite)' },
+                { id: 'security_agent', name: 'Security Specialist', desc: 'Secrets, CWE patterns, and config review', providerTag: 'Groq Cloud' },
+                { id: 'documentation_agent', name: 'Documentation Specialist', desc: 'README, deployment, ops readiness', providerTag: 'Groq Cloud' },
+                { id: 'dependency_agent', name: 'Dependency Specialist', desc: 'Manifests, unpinned versions, lockfiles', providerTag: 'Groq Cloud' },
               ].map((ag) => {
                 const checked = selectedAgents.includes(ag.id);
                 return (
@@ -200,9 +200,26 @@ function ReviewsContent() {
                       style={{ marginTop: '3px' }}
                     />
                     <div>
-                      <div style={{ fontSize: '13px', fontWeight: 600 }}>{ag.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>{ag.name}</span>
+                        {ag.id === 'code_agent' && (
+                          <span
+                            className="mono"
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                              color: '#10b981',
+                              fontWeight: 600,
+                            }}
+                          >
+                            Gemini API
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                        {ag.desc}
+                        {ag.desc} • <span className="mono" style={{ color: 'var(--text-muted)' }}>{ag.providerTag}</span>
                       </div>
                     </div>
                   </div>

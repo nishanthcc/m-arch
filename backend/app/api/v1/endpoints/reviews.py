@@ -141,7 +141,11 @@ async def get_review_findings(
     return res.scalars().all()
 
 @router.get("/{review_id}/report", response_model=ReviewReportResponse)
-async def get_review_report(review_id: str, db: AsyncSession = Depends(get_db)):
+async def get_review_report(
+    review_id: str,
+    presentation_mode: Optional[str] = Query("developer", pattern="^(simple|developer|professional|executive)$"),
+    db: AsyncSession = Depends(get_db)
+):
     stmt = (
         select(Review)
         .options(selectinload(Review.tasks), selectinload(Review.project))
@@ -176,37 +180,75 @@ async def get_review_report(review_id: str, db: AsyncSession = Depends(get_db)):
 
     project_name = review.project.name if review.project else "Project"
 
-    md_report = generate_markdown_report(
-        project_name=project_name,
-        question=review.question,
-        status=review.status,
-        summary=review.summary or "",
-        limitations=review.limitations or "",
-        findings=findings_dicts,
-        tasks=tasks_dicts
-    )
+    mode = presentation_mode or "developer"
+    views = review.presentation_views or {}
 
-    html_report = generate_html_report(
-        project_name=project_name,
-        question=review.question,
-        status=review.status,
-        summary=review.summary or "",
-        limitations=review.limitations or "",
-        findings=findings_dicts,
-        tasks=tasks_dicts
-    )
+    if mode in views and "markdown" in views[mode] and "html" in views[mode]:
+        md_report = views[mode]["markdown"]
+        html_report = views[mode]["html"]
+    else:
+        prof_dict = {"application_type": "Software Application"}
+        md_report = generate_markdown_report(
+            project_name=project_name,
+            question=review.question,
+            status=review.status,
+            summary=review.summary or "",
+            limitations=review.limitations or "",
+            findings=findings_dicts,
+            tasks=tasks_dicts,
+            mode=mode,
+            profile=prof_dict
+        )
+        html_report = generate_html_report(
+            project_name=project_name,
+            question=review.question,
+            status=review.status,
+            summary=review.summary or "",
+            limitations=review.limitations or "",
+            findings=findings_dicts,
+            tasks=tasks_dicts,
+            mode=mode,
+            profile=prof_dict
+        )
 
     return ReviewReportResponse(
         review_id=review.id,
         project_name=project_name,
         question=review.question,
         status=review.status,
+        commit_sha=review.commit_sha,
+        source_snapshot_id=review.source_snapshot_id,
+        presentation_mode=mode,
         summary=review.summary,
         limitations=review.limitations,
         total_findings=review.total_findings,
         findings_by_severity=severity_counts,
         findings=[FindingResponse.model_validate(f) for f in findings],
         agent_traces=review.tasks,
+        evidence_verification_summary=review.evidence_verification_summary,
+        presentation_views=review.presentation_views,
         markdown_report=md_report,
         html_report=html_report
     )
+
+@router.post("/{review_id}/verify-audit", response_model=ReviewReportResponse)
+async def verify_audit_review(
+    review_id: str,
+    presentation_mode: Optional[str] = Query("developer"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Explicitly audits and re-verifies an existing review against authentic snapshot source files on disk.
+    Updates finding statuses ('verified', 'partially_supported', 'unsupported', 'duplicate'),
+    calibrates severities, and rebuilds coverage summaries and presentation views.
+    """
+    from app.agents.verifier.agent import EvidenceVerifierAgent
+    verifier = EvidenceVerifierAgent()
+    try:
+        await verifier.audit_review(session=db, review_id=review_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audit failed: {str(e)}")
+
+    return await get_review_report(review_id=review_id, presentation_mode=presentation_mode, db=db)

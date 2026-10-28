@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.session import init_db
+from app.db.recovery import recover_dangling_jobs
 from app.api.v1.api import api_router
 
 # Configure logging
@@ -17,6 +18,8 @@ logger = logging.getLogger("m-arch")
 async def lifespan(app: FastAPI):
     logger.info("Initializing M-ARCH Database and Storage...")
     await init_db()
+    logger.info("Running job recovery checks for interrupted tasks...")
+    await recover_dangling_jobs()
     logger.info("M-ARCH Backend Ready.")
     yield
     logger.info("M-ARCH Backend Shutting Down.")

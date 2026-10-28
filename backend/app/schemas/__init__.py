@@ -58,6 +58,39 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
 
+class ProjectUserContextUpdate(BaseModel):
+    purpose: Optional[str] = None
+    deployment_env: Optional[str] = None
+    sensitive_data: Optional[str] = None
+    intended_users: Optional[str] = None
+    review_goals: Optional[str] = None
+
+class ProjectProfileResponse(BaseModel):
+    id: str
+    project_id: str
+    snapshot_id: str
+    languages: Dict[str, Any] = {}
+    frameworks: List[Dict[str, Any]] = []
+    application_type: str = "Unknown"
+    app_type_status: str = "inferred"
+    likely_purpose: Optional[str] = None
+    entrypoints: List[Dict[str, Any]] = []
+    modules: List[Dict[str, Any]] = []
+    services: List[Dict[str, Any]] = []
+    routes: List[Dict[str, Any]] = []
+    database_technologies: List[Dict[str, Any]] = []
+    dependency_manifests: List[Dict[str, Any]] = []
+    test_frameworks: List[Dict[str, Any]] = []
+    deployment_config: List[Dict[str, Any]] = []
+    architecture_graph: Dict[str, Any] = {}
+    unsupported_technologies: List[Dict[str, Any]] = []
+    user_context: Optional[Dict[str, Any]] = {}
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class ProjectResponse(BaseModel):
     id: str
     name: str
@@ -69,6 +102,7 @@ class ProjectResponse(BaseModel):
     current_snapshot_id: Optional[str] = None
     repo_url: Optional[str] = None
     current_commit_sha: Optional[str] = None
+    user_context: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -220,6 +254,8 @@ class ReviewResponse(BaseModel):
     source_snapshot_id: Optional[str] = None
     commit_sha: Optional[str] = None
     evidence_verification_summary: Optional[Dict[str, Any]] = None
+    skipped_agents: Optional[List[Dict[str, Any]]] = None
+    presentation_views: Optional[Dict[str, Any]] = None
     tasks: List[AgentTaskResponse] = []
     created_at: datetime
     updated_at: datetime
@@ -234,6 +270,7 @@ class ReviewReportResponse(BaseModel):
     status: str
     commit_sha: Optional[str] = None
     source_snapshot_id: Optional[str] = None
+    presentation_mode: str = "developer"
     summary: Optional[str] = None
     limitations: Optional[str] = None
     total_findings: int
@@ -241,6 +278,7 @@ class ReviewReportResponse(BaseModel):
     findings: List[FindingResponse]
     agent_traces: List[AgentTaskResponse]
     evidence_verification_summary: Optional[Dict[str, Any]] = None
+    presentation_views: Optional[Dict[str, Any]] = None
     markdown_report: str
     html_report: str
 
@@ -332,8 +370,11 @@ class EvaluationRunResponse(BaseModel):
     name: str
     status: str
     provider_mode: str
+    dataset_version: Optional[str] = "1.2.0"
+    snapshot_id: Optional[str] = None
     metrics: Dict[str, Any]
     sample_results: List[Dict[str, Any]]
+    execution_summary: Optional[Dict[str, Any]] = None
     elapsed_seconds: float
     created_at: datetime
 

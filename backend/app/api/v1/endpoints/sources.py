@@ -8,11 +8,16 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
-from app.db.models import Project, Source, SourceSnapshot
-from app.schemas import SourceResponse, SourceExcerptResponse
+from app.db.models import Project, Source, SourceSnapshot, ProjectProfile, Chunk
+from app.schemas import SourceResponse, SourceExcerptResponse, ProjectProfileResponse, ProjectUserContextUpdate
 from app.core.config import settings
 from app.services.ingestion.validator import validate_and_extract_archive, ALLOWED_EXTENSIONS, DISALLOWED_BINARIES, is_safe_path
 from app.services.ingestion.extractor import extract_file_content, detect_file_type
+from app.services.ingestion.chunker import chunk_text
+from app.services.profiling.profiler import project_profiler
+from app.services.embeddings.local_embeddings import embedding_service
+from app.services.retrieval.vector_store import vector_store
+from app.services.retrieval.fts_index import index_chunk_fts, delete_project_fts
 
 router = APIRouter()
 
@@ -141,6 +146,11 @@ async def upload_project_sources(
             detail="No valid source files were accepted (files may have been empty, binary, or unsupported)."
         )
 
+    # Mark existing snapshots as not current
+    prev_snaps = (await db.execute(select(SourceSnapshot).where(SourceSnapshot.project_id == project.id))).scalars().all()
+    for ps in prev_snaps:
+        ps.is_current = False
+
     # Create immutable SourceSnapshot
     snapshot = SourceSnapshot(
         id=snapshot_id,
@@ -156,13 +166,178 @@ async def upload_project_sources(
 
     project.source_count = project.source_count + len(created_sources)
     project.current_snapshot_id = snapshot_id
+    project.status = "indexing"
+    await db.commit()
+
+    # Step: Profile Application
+    profile_data = project_profiler.analyze_snapshot(
+        snapshot_id=snapshot_id,
+        project_id=project.id,
+        sources=created_sources,
+        snapshot_dir=storage_root,
+        user_context=project.user_context or {}
+    )
+    await project_profiler.save_or_update_profile(db, project.id, snapshot_id, profile_data)
+
+    # Step: Chunk and Index Sources into FTS5 and Vector Embeddings
+    all_chunk_ids = []
+    all_chunk_texts = []
+    created_chunks = 0
+
+    for src in created_sources:
+        src_path = Path(src.storage_path)
+        if not src_path.exists():
+            continue
+        c_text = src_path.read_text(encoding="utf-8", errors="replace")
+        chunk_items = chunk_text(src.id, c_text, src.file_type)
+
+        for item in chunk_items:
+            chunk = Chunk(
+                id=item.chunk_id,
+                project_id=project.id,
+                source_id=src.id,
+                chunk_index=item.chunk_index,
+                content=item.content,
+                start_line=item.start_line,
+                end_line=item.end_line,
+                section_heading=item.section_heading,
+                token_count=item.token_count,
+                embedding_id=item.chunk_id
+            )
+            db.add(chunk)
+            created_chunks += 1
+
+            await index_chunk_fts(
+                db,
+                chunk_id=item.chunk_id,
+                project_id=project.id,
+                source_id=src.id,
+                file_path=src.file_path,
+                content=item.content
+            )
+            all_chunk_ids.append(item.chunk_id)
+            all_chunk_texts.append(item.content)
+
+    if all_chunk_texts:
+        vectors = embedding_service.embed_batch(all_chunk_texts)
+        vector_store.save_vectors(project.id, all_chunk_ids, vectors)
+
+    project.chunk_count = created_chunks
     project.status = "ready"
+    project.indexing_metadata = {
+        "embedding_model": embedding_service.model_name,
+        "dimension": embedding_service.dimension,
+        "chunks_indexed": created_chunks,
+        "indexed_at": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
     await db.commit()
 
     for s in created_sources:
         await db.refresh(s)
 
     return created_sources
+
+@router.get("/projects/{project_id}/profile", response_model=ProjectProfileResponse)
+async def get_project_profile(
+    project_id: str,
+    snapshot_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrieves the evidence-grounded project profile for a snapshot.
+    If snapshot_id is not specified, uses the current active snapshot.
+    """
+    p_stmt = select(Project).where(Project.id == project_id)
+    project = (await db.execute(p_stmt)).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    target_snapshot = snapshot_id or project.current_snapshot_id
+    if not target_snapshot:
+        raise HTTPException(status_code=404, detail="No source snapshot exists for this project")
+
+    prof_stmt = select(ProjectProfile).where(
+        ProjectProfile.project_id == project_id,
+        ProjectProfile.snapshot_id == target_snapshot
+    )
+    profile = (await db.execute(prof_stmt)).scalar_one_or_none()
+
+    if not profile:
+        # Dynamically compute profile from snapshot sources if profile record is missing
+        src_stmt = select(Source).where(Source.project_id == project_id, Source.snapshot_id == target_snapshot)
+        sources = (await db.execute(src_stmt)).scalars().all()
+        if not sources:
+            src_stmt2 = select(Source).where(Source.project_id == project_id)
+            sources = (await db.execute(src_stmt2)).scalars().all()
+
+        storage_root = Path(project.storage_path) if project.storage_path else (settings.STORAGE_DIR / project_id)
+        profile_data = project_profiler.analyze_snapshot(
+            snapshot_id=target_snapshot,
+            project_id=project_id,
+            sources=sources,
+            snapshot_dir=storage_root,
+            user_context=project.user_context or {}
+        )
+        profile = await project_profiler.save_or_update_profile(db, project_id, target_snapshot, profile_data)
+
+    return profile
+
+@router.patch("/projects/{project_id}/context", response_model=ProjectProfileResponse)
+async def update_project_user_context(
+    project_id: str,
+    payload: ProjectUserContextUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Allows user to optionally describe project purpose, deployment environment,
+    sensitive data, intended users, and review goals.
+    Keeps user-provided information separate from automatic detection.
+    """
+    p_stmt = select(Project).where(Project.id == project_id)
+    project = (await db.execute(p_stmt)).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ctx = dict(project.user_context or {})
+    if payload.purpose is not None:
+        ctx["purpose"] = payload.purpose
+    if payload.deployment_env is not None:
+        ctx["deployment_env"] = payload.deployment_env
+    if payload.sensitive_data is not None:
+        ctx["sensitive_data"] = payload.sensitive_data
+    if payload.intended_users is not None:
+        ctx["intended_users"] = payload.intended_users
+    if payload.review_goals is not None:
+        ctx["review_goals"] = payload.review_goals
+
+    project.user_context = ctx
+    await db.commit()
+
+    # Update profile user context if active profile exists
+    if project.current_snapshot_id:
+        prof_stmt = select(ProjectProfile).where(
+            ProjectProfile.project_id == project_id,
+            ProjectProfile.snapshot_id == project.current_snapshot_id
+        )
+        profile = (await db.execute(prof_stmt)).scalar_one_or_none()
+        if profile:
+            profile.user_context = ctx
+            await db.commit()
+            await db.refresh(profile)
+            return profile
+
+    # Fallback to getting profile
+    return await get_project_profile(project_id=project_id, db=db)
+
+@router.get("/projects/{project_id}/architecture-graph")
+async def get_project_architecture_graph(
+    project_id: str,
+    snapshot_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns the evidence-grounded architecture and dependency graph."""
+    profile = await get_project_profile(project_id=project_id, snapshot_id=snapshot_id, db=db)
+    return profile.architecture_graph
 
 @router.delete("/projects/{project_id}/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_source(project_id: str, source_id: str, db: AsyncSession = Depends(get_db)):

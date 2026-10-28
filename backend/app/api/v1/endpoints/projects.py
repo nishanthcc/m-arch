@@ -198,6 +198,75 @@ async def refresh_github_snapshot(
 
     return job
 
+@router.post("/imports/{import_id}/cancel", response_model=GitHubImportJobResponse)
+async def cancel_import_job(import_id: str, db: AsyncSession = Depends(get_db)):
+    """Cancels an in-progress or queued ingestion job."""
+    stmt = select(ProjectImportJob).where(ProjectImportJob.id == import_id)
+    job = (await db.execute(stmt)).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Import job not found")
+
+    if job.status not in ("completed", "failed", "cancelled"):
+        job.status = "cancelled"
+        job.status_message = "Job cancelled by user."
+        await db.commit()
+        await db.refresh(job)
+    return job
+
+@router.post("/{project_id}/ingest/retry", response_model=GitHubImportJobResponse)
+async def retry_project_ingestion(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Idempotently retries or recovers ingestion for a project whose previous job failed or was interrupted.
+    """
+    stmt = select(Project).where(Project.id == project_id)
+    project = (await db.execute(stmt)).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    job_stmt = select(ProjectImportJob).where(ProjectImportJob.project_id == project_id).order_by(ProjectImportJob.created_at.desc())
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+
+    if not job:
+        # Create a new job if none exists
+        job = ProjectImportJob(
+            project_id=project.id,
+            importer_type="github" if project.repo_url else "file_upload",
+            status="pending",
+            progress_percent=5,
+            status_message="Retry queued",
+            repo_url=project.repo_url or "local_upload"
+        )
+        db.add(job)
+        await db.commit()
+        await db.refresh(job)
+
+    job.status = "pending"
+    job.progress_percent = 5
+    job.status_message = "Ingestion retry initialized..."
+    job.error_message = None
+    project.status = "indexing"
+    await db.commit()
+    await db.refresh(job)
+
+    if project.repo_url:
+        background_tasks.add_task(
+            run_github_import_background,
+            job.id,
+            project.id,
+            project.repo_url,
+            job.ref_name,
+            None
+        )
+    else:
+        # Re-index local sources
+        background_tasks.add_task(process_project_indexing, project.id)
+
+    return job
+
 @router.get("/{project_id}/snapshots", response_model=List[SourceSnapshotResponse])
 async def list_project_snapshots(project_id: str, db: AsyncSession = Depends(get_db)):
     """List all immutable source snapshots and commit SHAs for a project."""
@@ -231,6 +300,28 @@ async def update_project(project_id: str, payload: ProjectUpdate, db: AsyncSessi
     await db.commit()
     await db.refresh(project)
     return project
+
+@router.delete("/cleanup-tests", status_code=status.HTTP_200_OK)
+async def cleanup_test_projects(db: AsyncSession = Depends(get_db)):
+    """
+    Safely removes confirmed automated test projects ('Verifier Test Suite', 'Stuck Project')
+    while strictly preserving all user projects, files, and repositories.
+    """
+    stmt = select(Project).where(Project.name.in_(["Verifier Test Suite", "Stuck Project"]))
+    test_projects = (await db.execute(stmt)).scalars().all()
+    deleted_count = 0
+    for p in test_projects:
+        if p.storage_path and Path(p.storage_path).exists():
+            shutil.rmtree(p.storage_path, ignore_errors=True)
+        vector_store.delete_project_vectors(p.id)
+        await delete_project_fts(db, p.id)
+        await db.delete(p)
+        deleted_count += 1
+    await db.commit()
+    return {
+        "message": f"Successfully cleaned up {deleted_count} automated test projects.",
+        "deleted_count": deleted_count
+    }
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):

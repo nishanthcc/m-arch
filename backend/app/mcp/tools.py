@@ -86,11 +86,14 @@ async def search_project_documents(
 async def get_source_excerpt(
     session: AsyncSession, project_id: str, source_id: str, line_start: int, line_end: int
 ) -> Dict[str, Any]:
-    stmt = select(Source).where(Source.id == source_id, Source.project_id == project_id)
+    stmt = select(Source).where(
+        (Source.id == source_id) | (Source.file_path == source_id),
+        Source.project_id == project_id
+    )
     res = await session.execute(stmt)
     source = res.scalar_one_or_none()
     if not source:
-        return {"error": "Source not found"}
+        return {"error": f"Source '{source_id}' not found in project snapshot."}
 
     storage_path = Path(source.storage_path)
     if not storage_path.exists():

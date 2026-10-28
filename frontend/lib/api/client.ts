@@ -1,7 +1,8 @@
 import {
   Project, Source, Review, Finding, ReviewReport,
   AgentCard, ProvidersHealth, AppSettings, EvaluationDataset, EvaluationRun,
-  GitHubImportJob, SourceSnapshot, SecurityKnowledgeSource, SystemMetrics
+  GitHubImportJob, SourceSnapshot, SecurityKnowledgeSource, SystemMetrics,
+  ProjectProfile, ArchitectureGraph
 } from '../types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1';
@@ -40,6 +41,29 @@ export const api = {
     request<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
   deleteProject: (id: string) =>
     request<void>(`/projects/${id}`, { method: 'DELETE' }),
+  cleanupTestProjects: () =>
+    request<{ message: string; deleted_count: number }>('/projects/cleanup-tests', { method: 'DELETE' }),
+
+  // Project Profile & Architecture Visualization (v1.2.0)
+  getProjectProfile: (projectId: string, snapshotId?: string) =>
+    request<ProjectProfile>(snapshotId ? `/projects/${projectId}/profile?snapshot_id=${snapshotId}` : `/projects/${projectId}/profile`),
+
+  updateProjectUserContext: (projectId: string, data: {
+    purpose?: string;
+    deployment_env?: string;
+    sensitive_data?: string;
+    intended_users?: string;
+    review_goals?: string;
+  }) => request<ProjectProfile>(`/projects/${projectId}/context`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  getArchitectureGraph: (projectId: string, snapshotId?: string) =>
+    request<ArchitectureGraph>(snapshotId ? `/projects/${projectId}/architecture-graph?snapshot_id=${snapshotId}` : `/projects/${projectId}/architecture-graph`),
+
+  retryProjectIngestion: (projectId: string) =>
+    request<GitHubImportJob>(`/projects/${projectId}/ingest/retry`, { method: 'POST' }),
+
+  cancelImportJob: (importId: string) =>
+    request<GitHubImportJob>(`/projects/imports/${importId}/cancel`, { method: 'POST' }),
 
   // GitHub Import & Immutable Snapshots (v1.1.0)
   importGitHub: (data: {
@@ -117,8 +141,10 @@ export const api = {
     if (filters?.manual_review_only) params.append('manual_review_only', 'true');
     return request<Finding[]>(`/reviews/${reviewId}/findings?${params.toString()}`);
   },
-  getReviewReport: (reviewId: string) =>
-    request<ReviewReport>(`/reviews/${reviewId}/report`),
+  getReviewReport: (reviewId: string, mode: string = 'developer') =>
+    request<ReviewReport>(`/reviews/${reviewId}/report?presentation_mode=${mode}`),
+  verifyReviewAudit: (reviewId: string, mode: string = 'developer') =>
+    request<ReviewReport>(`/reviews/${reviewId}/verify-audit?presentation_mode=${mode}`, { method: 'POST' }),
 
   // SSE Stream URL
   getReviewEventsUrl: (reviewId: string) => `${API_BASE}/reviews/${reviewId}/events`,
@@ -148,7 +174,8 @@ export const api = {
   getProvidersHealth: () => request<ProvidersHealth>('/settings/providers'),
 
   // Evaluations & Real System Metrics (v1.1.0)
-  getSystemMetrics: () => request<SystemMetrics>('/evaluations/metrics'),
+  getSystemMetrics: (projectId?: string) =>
+    request<SystemMetrics>(projectId ? `/evaluations/metrics?project_id=${projectId}` : '/evaluations/metrics'),
   getEvaluationDatasets: () => request<EvaluationDataset[]>('/evaluations/datasets'),
   createEvaluationDataset: (data: { name: string; description?: string; dataset_payload: any[] }) =>
     request<EvaluationDataset>('/evaluations/datasets', { method: 'POST', body: JSON.stringify(data) }),

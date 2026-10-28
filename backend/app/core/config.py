@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "openai/gpt-oss-120b"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
+    # Cloud Provider: Gemini (Free API Key - strictly for Code Review Agent)
+    GEMINI_API_KEY: Optional[str] = Field(default=None)
+    GEMINI_MODEL: str = "gemini-3.1-flash-lite"
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+
     # Local Provider: Ollama
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5-coder:7b"
@@ -61,6 +66,9 @@ class Settings(BaseSettings):
 
     def is_groq_configured(self) -> bool:
         return bool(self.GROQ_API_KEY and len(self.GROQ_API_KEY.strip()) > 5)
+
+    def is_gemini_configured(self) -> bool:
+        return bool(self.GEMINI_API_KEY and len(self.GEMINI_API_KEY.strip()) > 5)
 
 settings = Settings()
 

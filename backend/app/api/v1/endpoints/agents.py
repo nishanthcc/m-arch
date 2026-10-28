@@ -21,12 +21,21 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
     health = await model_router.get_health_status()
     groq_info = health["providers"].get("Groq", {})
     ollama_info = health["providers"].get("Ollama", {})
+    gemini_info = health["providers"].get("Gemini", {})
 
-    configured_provider = settings.AI_PRIMARY_PROVIDER
-    configured_model = settings.GROQ_MODEL if configured_provider == "Groq" else settings.OLLAMA_MODEL
+    default_provider = settings.AI_PRIMARY_PROVIDER
+    default_model = settings.GROQ_MODEL if default_provider == "Groq" else settings.OLLAMA_MODEL
 
     cards = []
     for agent_id, meta in AGENT_CARDS_REGISTRY.items():
+        # Dedicated provider check: code_agent is powered strictly by Gemini
+        if agent_id == "code_agent" and settings.is_gemini_configured():
+            configured_provider = "Gemini"
+            configured_model = settings.GEMINI_MODEL
+        else:
+            configured_provider = default_provider
+            configured_model = default_model
+
         # Get prompt definition
         prompt_id = meta.get("prompt_id")
         prompt_version = "1.1.0"
@@ -70,6 +79,8 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
 
         if running_task:
             status = "busy"
+        elif configured_provider == "Gemini":
+            status = "available" if gemini_info.get("available", False) else "unavailable"
         elif configured_provider == "Groq" and not groq_info.get("configured", False):
             if ollama_info.get("available", False):
                 status = "available"  # Automatic fallback active

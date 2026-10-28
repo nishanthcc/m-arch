@@ -24,6 +24,7 @@ class Project(Base, TimestampMixin):
     current_snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     repo_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     current_commit_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=dict)
 
     sources: Mapped[List["Source"]] = relationship("Source", back_populates="project", cascade="all, delete-orphan")
     chunks: Mapped[List["Chunk"]] = relationship("Chunk", back_populates="project", cascade="all, delete-orphan")
@@ -31,6 +32,7 @@ class Project(Base, TimestampMixin):
     findings: Mapped[List["Finding"]] = relationship("Finding", back_populates="project", cascade="all, delete-orphan")
     snapshots: Mapped[List["SourceSnapshot"]] = relationship("SourceSnapshot", back_populates="project", cascade="all, delete-orphan")
     import_jobs: Mapped[List["ProjectImportJob"]] = relationship("ProjectImportJob", back_populates="project", cascade="all, delete-orphan")
+    profiles: Mapped[List["ProjectProfile"]] = relationship("ProjectProfile", back_populates="project", cascade="all, delete-orphan")
 
 class SourceSnapshot(Base, TimestampMixin):
     __tablename__ = "source_snapshots"
@@ -50,6 +52,34 @@ class SourceSnapshot(Base, TimestampMixin):
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
 
     project: Mapped["Project"] = relationship("Project", back_populates="snapshots")
+    profile: Mapped[Optional["ProjectProfile"]] = relationship("ProjectProfile", back_populates="snapshot", uselist=False, cascade="all, delete-orphan")
+
+class ProjectProfile(Base, TimestampMixin):
+    __tablename__ = "project_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    snapshot_id: Mapped[str] = mapped_column(String(36), ForeignKey("source_snapshots.id", ondelete="CASCADE"), nullable=False)
+
+    languages: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    frameworks: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    application_type: Mapped[str] = mapped_column(String(100), default="Unknown")
+    app_type_status: Mapped[str] = mapped_column(String(50), default="inferred")  # detected, inferred, user_provided, unknown
+    likely_purpose: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    entrypoints: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    modules: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    services: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    routes: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    database_technologies: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    dependency_manifests: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    test_frameworks: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    deployment_config: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    architecture_graph: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    unsupported_technologies: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    user_context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=dict)
+
+    project: Mapped["Project"] = relationship("Project", back_populates="profiles")
+    snapshot: Mapped["SourceSnapshot"] = relationship("SourceSnapshot", back_populates="profile")
 
 class ProjectImportJob(Base, TimestampMixin):
     __tablename__ = "project_import_jobs"
@@ -65,6 +95,10 @@ class ProjectImportJob(Base, TimestampMixin):
     resolved_commit_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     files_accepted: Mapped[int] = mapped_column(Integer, default=0)
     files_skipped: Mapped[int] = mapped_column(Integer, default=0)
+    files_failed: Mapped[int] = mapped_column(Integer, default=0)
+    chunks_created: Mapped[int] = mapped_column(Integer, default=0)
+    snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    skipped_details: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, default=list)
     total_size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -127,6 +161,8 @@ class Review(Base, TimestampMixin):
     source_snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     commit_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     evidence_verification_summary: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=dict)
+    skipped_agents: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, default=list)
+    presentation_views: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=dict)
 
     project: Mapped["Project"] = relationship("Project", back_populates="reviews")
     tasks: Mapped[List["AgentTask"]] = relationship("AgentTask", back_populates="review", cascade="all, delete-orphan", lazy="selectin")
@@ -241,11 +277,14 @@ class EvaluationRun(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     dataset_id: Mapped[str] = mapped_column(String(36), ForeignKey("evaluation_datasets.id", ondelete="CASCADE"), nullable=False)
+    snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    dataset_version: Mapped[Optional[str]] = mapped_column(String(20), default="1.0.0")
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="running")
+    status: Mapped[str] = mapped_column(String(50), default="running")  # running, completed, completed_with_limitations, cancelled, needs_attention
     provider_mode: Mapped[str] = mapped_column(String(50), default="Auto")
     metrics: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     sample_results: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    execution_summary: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=dict)
     elapsed_seconds: Mapped[float] = mapped_column(Float, default=0.0)
 
     dataset: Mapped["EvaluationDataset"] = relationship("EvaluationDataset", back_populates="runs")

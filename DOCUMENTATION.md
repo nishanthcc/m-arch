@@ -691,6 +691,11 @@ All endpoints are implemented in `backend/app/api/v1/endpoints/`:
 | `POST`| `/api/v1/projects` | Projects | Create a new project container | `endpoints/projects.py` |
 | `GET` | `/api/v1/projects/{id}` | Projects | Retrieve project details, status, and snapshots | `endpoints/projects.py` |
 | `DELETE`| `/api/v1/projects/{id}` | Projects | Cascading deletion of project, sources, and reviews | `endpoints/projects.py` |
+| `GET` | `/api/v1/projects/{id}/profile` | Profiling | Retrieve deterministic code profile with source citations | `endpoints/sources.py` |
+| `PATCH`| `/api/v1/projects/{id}/context` | Profiling | Update optional user review domain & goals | `endpoints/sources.py` |
+| `GET` | `/api/v1/projects/{id}/architecture-graph` | Profiling | Interactive architecture graph with node citations | `endpoints/sources.py` |
+| `POST`| `/api/v1/projects/{id}/ingest/retry` | Ingestion | Idempotently retry failed ingestion job | `endpoints/projects.py` |
+| `POST`| `/api/v1/projects/imports/{id}/cancel` | Ingestion | Cancel in-flight repository import job | `endpoints/projects.py` |
 | `POST`| `/api/v1/projects/import/github` | Projects | Initiate async GitHub repository import job | `endpoints/projects.py` |
 | `GET` | `/api/v1/projects/import/{job_id}` | Projects | Poll status of background GitHub import job | `endpoints/projects.py` |
 | `POST`| `/api/v1/projects/{id}/sources` | Sources | Multipart upload for local ZIP or source files | `endpoints/sources.py` |
@@ -700,7 +705,7 @@ All endpoints are implemented in `backend/app/api/v1/endpoints/`:
 | `GET` | `/api/v1/reviews` | Reviews | List historical review runs | `endpoints/reviews.py` |
 | `GET` | `/api/v1/reviews/{id}` | Reviews | Get detailed review report, findings, and tasks | `endpoints/reviews.py` |
 | `GET` | `/api/v1/reviews/{id}/events` | Reviews | Server-Sent Events (SSE) stream for live updates | `endpoints/reviews.py` |
-| `GET` | `/api/v1/reviews/{id}/export` | Reviews | Export review as downloadable Markdown or HTML | `endpoints/reviews.py` |
+| `GET` | `/api/v1/reviews/{id}/report` | Reviews | Export review in 4 presentation modes (developer, simple, professional, executive) | `endpoints/reviews.py` |
 | `GET` | `/api/v1/agents` | Agents | List registered A2A agent cards & live states | `endpoints/agents.py` |
 | `GET` | `/api/v1/agents/{id}/card` | Agents | Retrieve official A2A AgentCard protobuf metadata | `endpoints/agents.py` |
 | `GET` | `/api/v1/agents/{id}/health` | Agents | Diagnostic check for specific agent connectivity | `endpoints/agents.py` |
@@ -736,23 +741,24 @@ Defined in `backend/app/a2a/cards.py`:
 5. **`dependency_agent` (Dependency & Supply Chain Specialist):** Prompt `dependency_specialist_v1_1`, version `1.1.0`. Checks package manifests, lockfiles, unpinned versions, and license declarations.
 6. **`evidence_verifier` (Evidence & Citation Verifier):** Prompt `evidence_verifier_v1_1`, version `1.1.0`. Pre-synthesis quality gate validating citations, detecting overstatements, and calculating coverage scores.
 
-### 23.4 Versioned Prompt Registry Summary
+### 23.4 Versioned Prompt Registry Summary (v1.2.0)
 Implemented in `backend/app/prompts/registry.py`:
 
-| Prompt ID | Version | Target Agent | Token Budget | SHA-256 Definition Hash (Prefix) |
+| Prompt ID | Version | Target Agent | Token Budget | SHA-256 Definition Hash (Full) |
 | :--- | :--- | :--- | :--- | :--- |
-| `code_specialist_v1_1` | `1.1.0` | `code_agent` | 4096 | Computed dynamically via `compute_prompt_hash()` |
-| `security_specialist_v1_1` | `1.1.0` | `security_agent` | 4096 | Computed dynamically via `compute_prompt_hash()` |
-| `documentation_specialist_v1_1` | `1.1.0` | `documentation_agent` | 4096 | Computed dynamically via `compute_prompt_hash()` |
-| `dependency_specialist_v1_1` | `1.1.0` | `dependency_agent` | 4096 | Computed dynamically via `compute_prompt_hash()` |
-| `evidence_verifier_v1_1` | `1.1.0` | `evidence_verifier` | 4096 | Computed dynamically via `compute_prompt_hash()` |
-| `orchestrator_synthesis_v1_1` | `1.1.0` | `orchestrator` | 4096 | Computed dynamically via `compute_prompt_hash()` |
+| `code_specialist_v1_2` | `1.2.0` | `code_agent` | 4096 | `7407524fe622497f4f9acd594091778176549df7756080fb959560e4a2ef4976` |
+| `security_specialist_v1_2` | `1.2.0` | `security_agent` | 4096 | `f167ff4c7b1c4f742fb39606c105386a0fb44c5f26589f5ffffba2707646dc24` |
+| `documentation_specialist_v1_2` | `1.2.0` | `documentation_agent` | 4096 | `ba4a9837dcc287c87bfafeabd39ce0d2caa6d41e324fa058b82b90ddd258df75` |
+| `dependency_specialist_v1_2` | `1.2.0` | `dependency_agent` | 4096 | `39c013cd6e21d94d5b91842eb368e4f6c31e73f5234c7b4688ad0599f21be59f` |
+| `evidence_verifier_v1_2` | `1.2.0` | `evidence_verifier` | 4096 | `47451051c9f255b0ceac35f195b85e13f62404275d4b7bb20a7cbfa39c512a6e` |
+| `orchestrator_synthesis_v1_2` | `1.2.0` | `orchestrator` | 4096 | `02b115a9ecc90a80f10ba834b955f4e20712e2e1931b2eaff07b8e40edae02ad` |
 
 ### 23.5 Verification Checklist & Screenshots Required for Final Report
 * `[STUDENT INPUT REQUIRED: Screenshot 1 - Projects dashboard page showing project cards with snapshot hashes and source counts]`
 * `[STUDENT INPUT REQUIRED: Screenshot 2 - Add Project Sources modal showing the three distinct tabs (GitHub Repository, Upload ZIP, Upload Files)]`
-* `[STUDENT INPUT REQUIRED: Screenshot 3 - Live review workspace (/reviews/[id]) displaying real-time SSE progress bar, agent timeline, and executive summary]`
-* `[STUDENT INPUT REQUIRED: Screenshot 4 - Finding detail view with supporting evidence drawer expanded, highlighting source code snippet and line coordinates]`
-* `[STUDENT INPUT REQUIRED: Screenshot 5 - Agents diagnostic page (/agents) displaying all six agent cards with provider/model badges]`
-* `[STUDENT INPUT REQUIRED: Screenshot 6 - Settings page (/settings) displaying live latency measurements for Groq and Ollama connections]`
-* `[STUDENT INPUT REQUIRED: Screenshot 7 - Evaluations page (/evaluations) showing system metrics and benchmark execution results]`
+* `[STUDENT INPUT REQUIRED: Screenshot 3 - Project workspace (/projects/[id]) displaying the interactive Architecture Graph, detected frameworks, and User Context Editor]`
+* `[STUDENT INPUT REQUIRED: Screenshot 4 - Live review workspace (/reviews/[id]) displaying real-time SSE progress bar, agent timeline, and 4 Presentation Mode tabs]`
+* `[STUDENT INPUT REQUIRED: Screenshot 5 - Finding detail view with supporting evidence drawer expanded, highlighting source code snippet and line coordinates]`
+* `[STUDENT INPUT REQUIRED: Screenshot 6 - Agents diagnostic page (/agents) displaying all six agent cards with provider/model badges]`
+* `[STUDENT INPUT REQUIRED: Screenshot 7 - Settings page (/settings) displaying live latency measurements for Groq and Ollama connections]`
+* `[STUDENT INPUT REQUIRED: Screenshot 8 - Evaluations page (/evaluations) showing mathematically honest production metrics and benchmark execution results]`

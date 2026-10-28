@@ -24,6 +24,8 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [sourceType, setSourceType] = useState<'github' | 'zip' | 'files'>('github');
+  const [filterTab, setFilterTab] = useState<'all' | 'active' | 'attention'>('all');
+  const [cleaningTests, setCleaningTests] = useState(false);
 
   // GitHub Import state
   const [repoUrl, setRepoUrl] = useState('');
@@ -333,47 +335,121 @@ export default function ProjectsPage() {
     }
   };
 
+  // --- Safe Cleanup of Test Fixture Records ---
+  const handleCleanupTests = async () => {
+    if (!confirm('This will safely delete automated test fixture projects (such as "Verifier Test Suite" and "Stuck Project") while strictly preserving your authentic projects and snapshots. Continue?')) {
+      return;
+    }
+    setCleaningTests(true);
+    try {
+      const res = await api.cleanupTestProjects();
+      alert(res.message);
+      loadProjects();
+    } catch (err: any) {
+      alert(err.message || 'Error cleaning up test data');
+    } finally {
+      setCleaningTests(false);
+    }
+  };
+
   const isModalBusy = importing || zipUploading || filesUploading;
   const filesTotalBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
 
+  const filteredProjects = projects.filter((p) => {
+    if (filterTab === 'active') return p.status === 'ready' || p.status === 'indexing';
+    if (filterTab === 'attention') return p.status === 'needs_attention' || p.status === 'error';
+    return true;
+  });
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 700 }}>Project Catalog</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            GitHub repositories, immutable source snapshots, and semantic vector indexes.
+            Source repositories, immutable snapshots, and project-specific review histories.
           </p>
         </div>
-        <Button
-          id="add-project-button"
-          variant="primary"
-          onClick={() => {
-            setIsCreateOpen(true);
-            resetModalState();
-          }}
-        >
-          + Add Project
-        </Button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Button
+            variant="secondary"
+            onClick={handleCleanupTests}
+            disabled={cleaningTests}
+            title="Clean up leftover test projects while preserving all user projects"
+          >
+            {cleaningTests ? 'Cleaning...' : 'Clean Test Data'}
+          </Button>
+          <Button
+            id="add-project-button"
+            variant="primary"
+            onClick={() => {
+              setIsCreateOpen(true);
+              resetModalState();
+            }}
+          >
+            + Add Project
+          </Button>
+        </div>
+      </div>
+
+      {/* Filter Tabs Bar */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', gap: '8px' }}>
+        {[
+          { id: 'all', label: 'All Projects', count: projects.length },
+          { id: 'active', label: 'Active Projects', count: projects.filter((p) => p.status === 'ready' || p.status === 'indexing').length },
+          { id: 'attention', label: 'Needs Attention', count: projects.filter((p) => p.status === 'needs_attention' || p.status === 'error').length },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setFilterTab(tab.id as any)}
+            style={{
+              padding: '8px 16px',
+              background: 'none',
+              border: 'none',
+              borderBottom: filterTab === tab.id ? '2px solid var(--text-primary)' : '2px solid transparent',
+              color: filterTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+              fontWeight: filterTab === tab.id ? 600 : 400,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span>{tab.label}</span>
+            <span
+              className="mono"
+              style={{
+                fontSize: '10px',
+                padding: '1px 6px',
+                borderRadius: '10px',
+                backgroundColor: 'var(--bg-elevated)',
+                color: 'var(--text-muted)',
+              }}
+            >
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
       {loading ? (
         <p className="mono" style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
           Loading projects from local SQLite database...
         </p>
-      ) : projects.length === 0 ? (
+      ) : filteredProjects.length === 0 ? (
         <EmptyState
-          title="No Projects in Catalog"
-          description="Import a GitHub repository or create a project to build RAG vector indexes and run multi-agent reviews."
-          actionText="Import or Create Project"
-          onAction={() => {
+          title={filterTab === 'all' ? 'No Projects in Catalog' : `No Projects in '${filterTab}' status`}
+          description={filterTab === 'all' ? 'Import a GitHub repository or create a project to build RAG vector indexes and run multi-agent reviews.' : 'Switch back to All Projects or add a new repository.'}
+          actionText={filterTab === 'all' ? 'Import or Create Project' : undefined}
+          onAction={filterTab === 'all' ? () => {
             setIsCreateOpen(true);
             resetModalState();
-          }}
+          } : undefined}
         />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
-          {projects.map((p) => (
+          {filteredProjects.map((p) => (
             <Card
               key={p.id}
               title={
