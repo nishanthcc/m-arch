@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.next/
+out/
+build/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment variables & secrets (CRITICAL)
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+
+# Storage, Uploads, Vector databases & Local Cache
+data/
+uploads/
+storage/
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+vector_storage/
+chroma_db/
+cache/
+.cache/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

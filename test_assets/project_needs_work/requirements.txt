@@ -1,0 +1,6 @@
+# Unpinned / Wildcard dependencies with supply chain exposure
+flask=*
+requests>=1.0.0
+flask-cors
+pyjwt
+sqlite3
