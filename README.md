@@ -9,7 +9,6 @@ M-ARCH is a local-first, evidence-backed software project review platform. It di
 - **Model Context Protocol (MCP)**: Agents access read-only tools and resources through standard MCP interfaces.
 - **Resilient AI Routing**: Seamlessly switch between local Ollama (`qwen2.5-coder:7b`) and Groq cloud inference (`llama-3.3-70b-versatile`) with automatic fallback.
 - **Privacy & Secret Redaction**: High-entropy strings and credentials are automatically stripped before optional cloud queries.
-- **Apple HIG + Medusa Aesthetic**: Calm, high-density, precise dark/light interface built with Next.js App Router, Space Grotesk, and Space Mono.
 
 ## Quick Start
 
