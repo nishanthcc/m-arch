@@ -313,3 +313,4 @@ export const QualityRadarChart: React.FC<QualityRadarChartProps> = ({ scores }) 
     </div>
   );
 };
+

@@ -608,10 +608,16 @@ class EvidenceVerifierAgent(BaseAgent):
             "prompt_version": "1.3.0"
         }
 
-        # Regenerate dual-mode presentation views
-        from app.services.reports.exporter import generate_markdown_report, generate_html_report
+        # Regenerate dual-mode presentation views with distinct summaries
+        from app.services.reports.exporter import (
+            generate_markdown_report,
+            generate_html_report,
+            generate_technical_summary,
+            generate_simplified_summary
+        )
         proj_name = review.project.name if review.project else "Project"
         prof_dict = {"application_type": "Software Application"}
+        app_type_str = prof_dict.get("application_type", "Software Application")
 
         # Serialize findings for exporter
         serialized_findings = []
@@ -652,18 +658,22 @@ class EvidenceVerifierAgent(BaseAgent):
             for t in (review.tasks or [])
         ]
 
-        tech_md = generate_markdown_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="technical_review", profile=prof_dict)
-        tech_html = generate_html_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="technical_review", profile=prof_dict)
-        simple_md = generate_markdown_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="simplified_version", profile=prof_dict)
-        simple_html = generate_html_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="simplified_version", profile=prof_dict)
+        tech_summary = generate_technical_summary(proj_name, review.question, serialized_findings, app_type_str)
+        simple_summary = generate_simplified_summary(proj_name, review.question, serialized_findings, app_type_str)
+        review.summary = tech_summary
+
+        tech_md = generate_markdown_report(proj_name, review.question, review.status, tech_summary, review.limitations or "", serialized_findings, tasks_list, mode="technical_review", profile=prof_dict)
+        tech_html = generate_html_report(proj_name, review.question, review.status, tech_summary, review.limitations or "", serialized_findings, tasks_list, mode="technical_review", profile=prof_dict)
+        simple_md = generate_markdown_report(proj_name, review.question, review.status, simple_summary, review.limitations or "", serialized_findings, tasks_list, mode="simplified_version", profile=prof_dict)
+        simple_html = generate_html_report(proj_name, review.question, review.status, simple_summary, review.limitations or "", serialized_findings, tasks_list, mode="simplified_version", profile=prof_dict)
 
         review.presentation_views = {
-            "technical_review": {"markdown": tech_md, "html": tech_html},
-            "simplified_version": {"markdown": simple_md, "html": simple_html},
-            "developer": {"markdown": tech_md, "html": tech_html},
-            "simple": {"markdown": simple_md, "html": simple_html},
-            "professional": {"markdown": tech_md, "html": tech_html},
-            "executive": {"markdown": tech_md, "html": tech_html}
+            "technical_review": {"summary": tech_summary, "markdown": tech_md, "html": tech_html},
+            "simplified_version": {"summary": simple_summary, "markdown": simple_md, "html": simple_html},
+            "developer": {"summary": tech_summary, "markdown": tech_md, "html": tech_html},
+            "simple": {"summary": simple_summary, "markdown": simple_md, "html": simple_html},
+            "professional": {"summary": tech_summary, "markdown": tech_md, "html": tech_html},
+            "executive": {"summary": tech_summary, "markdown": tech_md, "html": tech_html}
         }
 
         await session.commit()

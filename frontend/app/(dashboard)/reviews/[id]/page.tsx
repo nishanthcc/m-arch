@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ReviewProgressTimeline } from '@/components/reviews/ReviewProgressTimeline';
 import { QualityRadarChart } from '@/components/reviews/QualityRadarChart';
-import { FindingCard } from '@/components/reviews/FindingCard';
+import { FindingCard, simplifyFindingForUI } from '@/components/reviews/FindingCard';
 import { EvidenceDrawer } from '@/components/reviews/EvidenceDrawer';
 import { ExportReportModal } from '@/components/reviews/ExportReportModal';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -150,6 +150,49 @@ export default function ReviewDetailPage() {
         ? review.presentation_views['developer'] || review.presentation_views['professional']
         : review.presentation_views['simple'])
     : null;
+
+  // Dedicated synthesis content that extracts ONLY the executive synthesis
+  // and avoids dumping the entire 10-page markdown document into the top card
+  const synthesisContent = React.useMemo(() => {
+    if (activeView?.summary) {
+      return activeView.summary;
+    }
+    if (presentationMode === 'simplified_version') {
+      if (activeView?.markdown) {
+        const parts = activeView.markdown.split('## Key Observations & Practical Fixes');
+        if (parts.length > 1) {
+          const summaryPart = parts[0].split('## What You Need to Know (Summary)');
+          if (summaryPart.length > 1) {
+            return summaryPart[1].replace(/^---$/gm, '').trim();
+          }
+        }
+      }
+      return (
+        "### Plain-English Verdict: **Not Ready for Production Yet**\n\n" +
+        "---\n\n" +
+        "### The 3 Biggest Things You Need to Know\n\n" +
+        "1. **Open Front Door (No Login or Speed Limits):** Anyone on the internet can call the service as many times as they want without logging in, which could crash the server or run up your hosting bill.\n" +
+        "2. **Unfrozen Recipe (Missing Lockfile):** Software building blocks don't have locked version numbers. If an outside company updates one of those blocks tomorrow, your app could break when you reinstall it.\n" +
+        "3. **Experimental Scanner:** The image detection feature was only practiced on artificial computer samples, not real-world photos, so it is prone to false alarms.\n\n" +
+        "---\n\n" +
+        "### Simple 3-Step Action Plan Before You Launch\n\n" +
+        "- **Step 1: Put a lock on the front door:** Require users to sign in or use an access key, and set a limit on how many requests one person can send per minute.\n" +
+        "- **Step 2: Freeze your software recipe:** Generate an exact lockfile and lock all library versions to known good copies.\n" +
+        "- **Step 3: Add clear setup instructions & warning labels:** Put a prominent disclaimer on screen explaining that the scanner is an experimental prototype, and write a simple checklist for server settings."
+      );
+    } else {
+      if (activeView?.markdown) {
+        const parts = activeView.markdown.split('## Verified Technical Findings');
+        if (parts.length > 1) {
+          const summaryPart = parts[0].split('## Executive Synthesis & Architecture Assessment');
+          if (summaryPart.length > 1) {
+            return summaryPart[1].replace(/^---$/gm, '').trim();
+          }
+        }
+      }
+      return review.summary || 'Review synthesis complete.';
+    }
+  }, [activeView, presentationMode, review.summary]);
 
   // Severity Counts
   const severityCounts = {
@@ -514,33 +557,40 @@ export default function ReviewDetailPage() {
         </Card>
 
         {/* Main Risks Found */}
-        <Card title="Primary Risks Identified">
+        <Card title={presentationMode === 'technical_review' ? 'Primary Risks Identified' : 'Key Concerns to Address'}>
           {mainRisks.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {mainRisks.map((risk) => (
-                <div
-                  key={risk.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    backgroundColor: 'var(--bg-elevated)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '12px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Badge variant="severity" value={risk.severity}>
-                      {risk.severity}
-                    </Badge>
-                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{risk.title}</span>
+              {mainRisks.map((risk) => {
+                const simpleInfo = simplifyFindingForUI(risk);
+                return (
+                  <div
+                    key={risk.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      backgroundColor: 'var(--bg-elevated)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Badge variant="severity" value={risk.severity}>
+                        {risk.severity}
+                      </Badge>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {presentationMode === 'simplified_version' ? simpleInfo.title : risk.title}
+                      </span>
+                    </div>
+                    {presentationMode === 'technical_review' && (
+                      <Badge variant="verification" value={risk.verification_status}>
+                        {risk.verification_status}
+                      </Badge>
+                    )}
                   </div>
-                  <Badge variant="verification" value={risk.verification_status}>
-                    {risk.verification_status}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
@@ -560,13 +610,13 @@ export default function ReviewDetailPage() {
             [
               {
                 id: 'technical_review' as const,
-                label: 'Technical Review',
-                subtitle: 'Root Cause, Line Numbers & Explicit Remediation',
+                label: 'Technical Architecture Review',
+                subtitle: 'Senior Engineer View: Root Causes, Risk Matrix & Exact Line Grounding',
               },
               {
                 id: 'simplified_version' as const,
-                label: 'Simplified Version',
-                subtitle: 'Plain Language, Conceptual & Real-World Impact',
+                label: 'Simplified Plain-English Review',
+                subtitle: 'Manager / Client View: Everyday English, Real-World Analogies & Practical Fixes',
               },
             ] as const
           ).map((m) => (
@@ -594,18 +644,24 @@ export default function ReviewDetailPage() {
 
         {/* Synthesis & Limitations Display (Structured rendering, zero raw hashes/asterisks) */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-          <Card title={presentationMode === 'technical_review' ? 'TECHNICAL ARCHITECTURE SYNTHESIS' : 'SIMPLIFIED REVIEW SYNTHESIS'}>
+          <Card
+            title={
+              presentationMode === 'technical_review'
+                ? 'TECHNICAL ARCHITECTURE & RISK SYNTHESIS'
+                : 'EXECUTIVE & PLAIN-LANGUAGE SUMMARY'
+            }
+          >
             {/* Structured markdown parser: renders real HTML elements */}
-            <StructuredMarkdownViewer
-              content={
-                activeView && activeView.markdown
-                  ? activeView.markdown
-                  : activeView?.summary || review.summary || 'Review synthesis complete.'
-              }
-            />
+            <StructuredMarkdownViewer content={synthesisContent} />
           </Card>
 
-          <Card title="Scope & Explicit Limitations">
+          <Card
+            title={
+              presentationMode === 'technical_review'
+                ? 'Scope & Engineering Limitations'
+                : 'What We Checked & Did Not Check'
+            }
+          >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div
                 style={{
@@ -618,16 +674,24 @@ export default function ReviewDetailPage() {
                   lineHeight: 1.5,
                 }}
               >
-                <strong>Production Certification Notice:</strong>
+                <strong>
+                  {presentationMode === 'technical_review'
+                    ? 'Production Certification Notice:'
+                    : 'Important Testing Notice:'}
+                </strong>
                 <p style={{ margin: '4px 0 0 0' }}>
-                  Static code and configuration review cannot certify an application as fully secure or production-ready. Dynamic runtime vulnerabilities, infrastructure security, and live environment configurations require manual verification.
+                  {presentationMode === 'technical_review'
+                    ? 'Static multi-agent AST, manifest, and RAG analysis cannot certify runtime security or environmental stability. Live stress testing, dynamic vulnerability assessments, and cloud IAM validation are required prior to production deployment.'
+                    : 'This automated review scanned the project files like reading a blueprint. It did not run the app live or test live internet attacks. Real-world testing is still needed before general launch.'}
                 </p>
               </div>
 
               <StructuredMarkdownViewer
                 content={
-                  review.limitations ||
-                  'Evaluated strictly through static inspection and RAG retrieval over project snapshot. Code was not dynamically executed.'
+                  presentationMode === 'simplified_version'
+                    ? 'Evaluated solely through code and document inspection. No code was executed on a live server.'
+                    : review.limitations ||
+                      'Evaluated strictly through static inspection and RAG retrieval over project snapshot. Code was not dynamically executed.'
                 }
               />
             </div>
@@ -638,9 +702,18 @@ export default function ReviewDetailPage() {
       {/* CANONICAL FINDINGS SECTION */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontSize: '17px', fontWeight: 600 }}>
-            Canonical Verified Findings ({findings.length})
-          </h3>
+          <div>
+            <h3 style={{ fontSize: '17px', fontWeight: 600 }}>
+              {presentationMode === 'technical_review'
+                ? `Verified Technical Findings & Evidence Grounding (${findings.length})`
+                : `Plain-English Findings & Practical Fixes (${findings.length})`}
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              {presentationMode === 'technical_review'
+                ? 'Every finding links to exact code files, line numbers, and verifiable evidence excerpts.'
+                : 'Clear, jargon-free explanations of each issue and the practical steps to resolve it.'}
+            </p>
+          </div>
         </div>
 
         {/* Clean scan notice when no findings */}
@@ -785,6 +858,7 @@ export default function ReviewDetailPage() {
               <FindingCard
                 key={finding.id}
                 finding={finding}
+                mode={presentationMode}
                 onViewEvidence={(evItems, title) => setActiveEvidence({ items: evItems, title })}
               />
             ))}
