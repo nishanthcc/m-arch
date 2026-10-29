@@ -141,9 +141,9 @@ export const api = {
     if (filters?.manual_review_only) params.append('manual_review_only', 'true');
     return request<Finding[]>(`/reviews/${reviewId}/findings?${params.toString()}`);
   },
-  getReviewReport: (reviewId: string, mode: string = 'developer') =>
+  getReviewReport: (reviewId: string, mode: string = 'technical_review') =>
     request<ReviewReport>(`/reviews/${reviewId}/report?presentation_mode=${mode}`),
-  verifyReviewAudit: (reviewId: string, mode: string = 'developer') =>
+  verifyReviewAudit: (reviewId: string, mode: string = 'technical_review') =>
     request<ReviewReport>(`/reviews/${reviewId}/verify-audit?presentation_mode=${mode}`, { method: 'POST' }),
 
   // SSE Stream URL

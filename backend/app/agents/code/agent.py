@@ -12,7 +12,7 @@ class CodeTestingAgent(BaseAgent):
             agent_id="code_agent",
             name="Code & Testing Specialist"
         )
-        self.prompt_def = get_prompt_definition("code_specialist_v1_1")
+        self.prompt_def = get_prompt_definition("code_specialist_v1_2")
 
     async def execute_task(
         self,
@@ -71,7 +71,11 @@ Dependency Manifests Found: {len(manifests)}
 Retrieved Code Excerpts:
 {chr(10).join(evidence_summary) if evidence_summary else "No code excerpts retrieved."}
 
-Evaluate the codebase architecture, error resilience, test presence, and dependency safety. Ground every finding in specific lines from the evidence.
+STRICT EVIDENCE & SOURCING RULES:
+1. Map every critique to a specific file path and exact line number from the retrieved evidence.
+2. If you cannot cite a valid line number from the snapshot for a critique, you MUST discard that critique entirely.
+3. Every finding must include an 'evidence' array citing real display_path, line_start, line_end, and excerpt.
+4. Output strictly valid JSON with a 'findings' list.
 """
 
         model_resp = await self.query_model(

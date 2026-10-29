@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ReviewProgressTimeline } from '@/components/reviews/ReviewProgressTimeline';
+import { QualityRadarChart } from '@/components/reviews/QualityRadarChart';
 import { FindingCard } from '@/components/reviews/FindingCard';
 import { EvidenceDrawer } from '@/components/reviews/EvidenceDrawer';
 import { ExportReportModal } from '@/components/reviews/ExportReportModal';
@@ -28,7 +29,7 @@ export default function ReviewDetailPage() {
   const [auditMessage, setAuditMessage] = useState<string | null>(null);
 
   // Presentation Mode: 'developer' | 'simple' | 'professional' | 'executive'
-  const [presentationMode, setPresentationMode] = useState<'developer' | 'simple' | 'professional' | 'executive'>('developer');
+  const [presentationMode, setPresentationMode] = useState<'technical_review' | 'simplified_version'>('technical_review');
 
   // Filters
   const [severityFilter, setSeverityFilter] = useState('');
@@ -142,8 +143,13 @@ export default function ReviewDetailPage() {
     return <p>Review not found.</p>;
   }
 
-  // Active Presentation View Content
-  const activeView = review.presentation_views ? review.presentation_views[presentationMode] : null;
+  // Active Presentation View Content (Dual-Mode Persona Architecture)
+  const activeView = review.presentation_views
+    ? review.presentation_views[presentationMode] ||
+      (presentationMode === 'technical_review'
+        ? review.presentation_views['developer'] || review.presentation_views['professional']
+        : review.presentation_views['simple'])
+    : null;
 
   // Severity Counts
   const severityCounts = {
@@ -481,6 +487,9 @@ export default function ReviewDetailPage() {
         </div>
       </div>
 
+      {/* GRANULAR QUANTITATIVE QUALITY RADAR & BAR CHART */}
+      <QualityRadarChart scores={verificationSummary?.quality_scores} />
+
       {/* LEAD SECTION 2 & 3: WHAT WAS REVIEWED & MAIN RISKS */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
         {/* What was reviewed */}
@@ -546,20 +555,26 @@ export default function ReviewDetailPage() {
 
       {/* PRESENTATION MODE TABS WITH ZERO RAW MARKDOWN */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', gap: '8px' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', gap: '12px' }}>
           {(
             [
-              { id: 'developer', label: 'Developer Review', subtitle: 'Technical & Remediation' },
-              { id: 'simple', label: 'Simple English', subtitle: 'Plain Language' },
-              { id: 'professional', label: 'Professional Report', subtitle: 'Stakeholder & Audit' },
-              { id: 'executive', label: 'Executive Summary', subtitle: 'Risk & Strategy' },
+              {
+                id: 'technical_review' as const,
+                label: 'Technical Review',
+                subtitle: 'Root Cause, Line Numbers & Explicit Remediation',
+              },
+              {
+                id: 'simplified_version' as const,
+                label: 'Simplified Version',
+                subtitle: 'Plain Language, Conceptual & Real-World Impact',
+              },
             ] as const
           ).map((m) => (
             <button
               key={m.id}
               onClick={() => setPresentationMode(m.id)}
               style={{
-                padding: '10px 16px',
+                padding: '12px 20px',
                 background: 'none',
                 border: 'none',
                 borderBottom: presentationMode === m.id ? '2px solid var(--text-primary)' : '2px solid transparent',
@@ -568,17 +583,18 @@ export default function ReviewDetailPage() {
                 cursor: 'pointer',
                 fontSize: '13px',
                 textAlign: 'left',
+                transition: 'border-color 0.15s ease',
               }}
             >
-              <div>{m.label}</div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{m.subtitle}</div>
+              <div style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{m.label}</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{m.subtitle}</div>
             </button>
           ))}
         </div>
 
         {/* Synthesis & Limitations Display (Structured rendering, zero raw hashes/asterisks) */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-          <Card title={`${presentationMode.toUpperCase()} SYNTHESIS`}>
+          <Card title={presentationMode === 'technical_review' ? 'TECHNICAL ARCHITECTURE SYNTHESIS' : 'SIMPLIFIED REVIEW SYNTHESIS'}>
             {/* Structured markdown parser: renders real HTML elements */}
             <StructuredMarkdownViewer
               content={

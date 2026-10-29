@@ -92,7 +92,7 @@ class EvidenceVerifierAgent(BaseAgent):
                 if project_id:
                     break
 
-        if project_id:
+        if project_id and session:
             src_stmt = select(Source).where(Source.project_id == project_id)
             if snapshot_id:
                 src_stmt = src_stmt.where(Source.snapshot_id == snapshot_id)
@@ -315,6 +315,54 @@ class EvidenceVerifierAgent(BaseAgent):
         else:
             coverage_statement = f"Static analysis evaluated {files_analyzed_count} files."
 
+        # Step 4b: Compute Granular Quantitative Quality Scores (1-10 integer scale)
+        sec_penalty = 0
+        perf_penalty = 0
+        maint_penalty = 0
+        rel_penalty = 0
+        test_penalty = 0
+
+        for f in verified_findings:
+            sev = f.get("severity", "medium").lower()
+            cat = f.get("category", "").lower()
+            t_lower = f.get("title", "").lower()
+            penalty = 3.0 if sev == "critical" else (2.0 if sev == "high" else (1.0 if sev == "medium" else 0.5))
+
+            if "security" in cat or "secret" in t_lower or "cwe" in t_lower or "owasp" in t_lower or "injection" in t_lower:
+                sec_penalty += penalty
+            elif "performance" in cat or "slow" in t_lower or "latency" in t_lower or "bottleneck" in t_lower:
+                perf_penalty += penalty
+            elif "test" in cat or "coverage" in t_lower or "untested" in t_lower:
+                test_penalty += penalty
+            elif "reliability" in cat or "resilience" in cat or "error" in t_lower or "crash" in t_lower or "exception" in t_lower:
+                rel_penalty += penalty
+            else:
+                maint_penalty += penalty
+
+        # Baseline calculation bounded strictly in [1, 10] integer range
+        security_score = max(1, min(10, round(10 - sec_penalty)))
+        performance_score = max(1, min(10, round(10 - perf_penalty)))
+        maintainability_score = max(1, min(10, round(10 - maint_penalty)))
+        reliability_score = max(1, min(10, round(10 - rel_penalty)))
+        test_coverage_score = max(1, min(10, round(8 - test_penalty)))
+
+        overall_architecture_score = max(1, min(10, round(
+            (security_score * 0.25) +
+            (performance_score * 0.15) +
+            (maintainability_score * 0.20) +
+            (reliability_score * 0.20) +
+            (test_coverage_score * 0.20)
+        )))
+
+        quality_scores = {
+            "security_score": int(security_score),
+            "performance_score": int(performance_score),
+            "maintainability_score": int(maintainability_score),
+            "reliability_score": int(reliability_score),
+            "test_coverage_score": int(test_coverage_score),
+            "overall_architecture_score": int(overall_architecture_score),
+        }
+
         # Step 5: Conflict Detection Pass
         conflicts = []
         for i, f1 in enumerate(verified_findings):
@@ -343,6 +391,7 @@ class EvidenceVerifierAgent(BaseAgent):
             "total_files": total_files,
             "coverage_statement": coverage_statement,
             "conflicts_identified": conflicts,
+            "quality_scores": quality_scores,
             "execution_time_seconds": round(elapsed, 3),
             "prompt_id": self.prompt_def.prompt_id,
             "prompt_version": self.prompt_def.version,
@@ -523,6 +572,26 @@ class EvidenceVerifierAgent(BaseAgent):
             cov_stmt = f"Static analysis evaluated {files_analyzed_count} files."
 
         review.total_findings = len(active_verified_findings)
+        # Compute integer quality scores (1-10)
+        sec_findings = [f for f in active_verified_findings if f.severity in ("critical", "high") and (f.category == "security" or "security" in f.title.lower())]
+        sec_score = max(1, 10 - (len(sec_findings) * 2))
+        crit_count = sum(1 for f in active_verified_findings if f.severity == "critical")
+        high_count = sum(1 for f in active_verified_findings if f.severity == "high")
+        med_count = sum(1 for f in active_verified_findings if f.severity == "medium")
+        perf_score = max(1, 10 - sum(2 for f in active_verified_findings if "performance" in (f.category or "").lower() or "perf" in f.title.lower()))
+        maint_score = max(1, 10 - ((crit_count * 2) + high_count + (med_count // 2)))
+        rel_score = max(1, 10 - ((crit_count * 3) + high_count))
+        test_score = 7 if any("test" in (f.category or "").lower() for f in active_verified_findings) else 4
+        overall_score = max(1, min(10, round((sec_score + perf_score + maint_score + rel_score + test_score) / 5)))
+        quality_scores = {
+            "security_score": sec_score,
+            "performance_score": perf_score,
+            "maintainability_score": maint_score,
+            "reliability_score": rel_score,
+            "test_coverage_score": test_score,
+            "overall_architecture_score": overall_score
+        }
+
         review.evidence_verification_summary = {
             "verified_count": verified_count,
             "partially_supported_count": partially_supported_count,
@@ -530,15 +599,16 @@ class EvidenceVerifierAgent(BaseAgent):
             "duplicate_count": duplicate_count,
             "not_verifiable_count": not_verifiable_count,
             "citation_coverage_score": coverage_score,
+            "quality_scores": quality_scores,
             "files_analyzed": files_analyzed_count,
             "files_skipped": skipped_files,
             "total_files": total_files,
             "coverage_statement": cov_stmt,
             "audited_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-            "prompt_version": "1.2.0"
+            "prompt_version": "1.3.0"
         }
 
-        # Regenerate 4 presentation views
+        # Regenerate dual-mode presentation views
         from app.services.reports.exporter import generate_markdown_report, generate_html_report
         proj_name = review.project.name if review.project else "Project"
         prof_dict = {"application_type": "Software Application"}
@@ -582,23 +652,18 @@ class EvidenceVerifierAgent(BaseAgent):
             for t in (review.tasks or [])
         ]
 
+        tech_md = generate_markdown_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="technical_review", profile=prof_dict)
+        tech_html = generate_html_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="technical_review", profile=prof_dict)
+        simple_md = generate_markdown_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="simplified_version", profile=prof_dict)
+        simple_html = generate_html_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="simplified_version", profile=prof_dict)
+
         review.presentation_views = {
-            "simple": {
-                "markdown": generate_markdown_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="simple", profile=prof_dict),
-                "html": generate_html_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="simple", profile=prof_dict)
-            },
-            "developer": {
-                "markdown": generate_markdown_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="developer", profile=prof_dict),
-                "html": generate_html_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="developer", profile=prof_dict)
-            },
-            "professional": {
-                "markdown": generate_markdown_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="professional", profile=prof_dict),
-                "html": generate_html_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="professional", profile=prof_dict)
-            },
-            "executive": {
-                "markdown": generate_markdown_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="executive", profile=prof_dict),
-                "html": generate_html_report(proj_name, review.question, review.status, review.summary or "", review.limitations or "", serialized_findings, tasks_list, mode="executive", profile=prof_dict)
-            }
+            "technical_review": {"markdown": tech_md, "html": tech_html},
+            "simplified_version": {"markdown": simple_md, "html": simple_html},
+            "developer": {"markdown": tech_md, "html": tech_html},
+            "simple": {"markdown": simple_md, "html": simple_html},
+            "professional": {"markdown": tech_md, "html": tech_html},
+            "executive": {"markdown": tech_md, "html": tech_html}
         }
 
         await session.commit()

@@ -143,7 +143,7 @@ async def get_review_findings(
 @router.get("/{review_id}/report", response_model=ReviewReportResponse)
 async def get_review_report(
     review_id: str,
-    presentation_mode: Optional[str] = Query("developer", pattern="^(simple|developer|professional|executive)$"),
+    presentation_mode: Optional[str] = Query("technical_review", pattern="^(technical_review|simplified_version|simple|developer|professional|executive)$"),
     db: AsyncSession = Depends(get_db)
 ):
     stmt = (
@@ -180,7 +180,7 @@ async def get_review_report(
 
     project_name = review.project.name if review.project else "Project"
 
-    mode = presentation_mode or "developer"
+    mode = presentation_mode or "technical_review"
     views = review.presentation_views or {}
 
     if mode in views and "markdown" in views[mode] and "html" in views[mode]:
@@ -234,7 +234,7 @@ async def get_review_report(
 @router.post("/{review_id}/verify-audit", response_model=ReviewReportResponse)
 async def verify_audit_review(
     review_id: str,
-    presentation_mode: Optional[str] = Query("developer"),
+    presentation_mode: Optional[str] = Query("technical_review"),
     db: AsyncSession = Depends(get_db)
 ):
     """

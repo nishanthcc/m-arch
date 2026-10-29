@@ -6,12 +6,14 @@ import { Button } from '../ui/Button';
 import { ReviewReport } from '@/lib/types';
 import { api } from '@/lib/api/client';
 
+export type PresentationMode = 'technical_review' | 'simplified_version' | 'developer' | 'simple' | 'professional' | 'executive';
+
 interface ExportReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   reviewId?: string;
   report: ReviewReport | null;
-  initialMode?: 'developer' | 'simple' | 'professional' | 'executive';
+  initialMode?: PresentationMode;
 }
 
 export const ExportReportModal: React.FC<ExportReportModalProps> = ({
@@ -19,9 +21,9 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
   onClose,
   reviewId,
   report: initialReport,
-  initialMode = 'developer',
+  initialMode = 'technical_review',
 }) => {
-  const [currentMode, setCurrentMode] = useState<'developer' | 'simple' | 'professional' | 'executive'>(initialMode);
+  const [currentMode, setCurrentMode] = useState<PresentationMode>(initialMode);
   const [report, setReport] = useState<ReviewReport | null>(initialReport);
   const [loadingMode, setLoadingMode] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -36,7 +38,7 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
     setCurrentMode(initialMode);
   }, [initialMode]);
 
-  const handleModeChange = async (newMode: 'developer' | 'simple' | 'professional' | 'executive') => {
+  const handleModeChange = async (newMode: PresentationMode) => {
     setCurrentMode(newMode);
     if (!reviewId) return;
     setLoadingMode(true);
@@ -82,40 +84,50 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
     <Modal isOpen={isOpen} onClose={onClose} title="Export Canonical Review Report" width="650px">
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-          Export this evidence-backed technical review. All presentation views share the exact same canonical verified findings, adapting tone and structure without modifying evidence.
+          Export this evidence-backed review. Both persona views share the exact same verified findings, adapting vocabulary and structure according to strict audience constraints.
         </p>
 
-        {/* Presentation Mode Selector */}
+        {/* Dual-Mode Presentation Selector */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Select Presentation Mode
+            Select Persona Architecture Mode
           </label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             {(
               [
-                { id: 'developer', label: 'Developer', desc: 'Code & remediation' },
-                { id: 'simple', label: 'Simple English', desc: 'Plain language' },
-                { id: 'professional', label: 'Professional', desc: 'Audit & stakeholders' },
-                { id: 'executive', label: 'Executive', desc: 'Risk summary' },
+                {
+                  id: 'technical_review' as const,
+                  label: 'Technical Review',
+                  desc: 'Root cause analysis, line numbers & explicit remediation',
+                },
+                {
+                  id: 'simplified_version' as const,
+                  label: 'Simplified Version',
+                  desc: 'Real-world impact, plain language, zero technical jargon',
+                },
               ] as const
-            ).map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => handleModeChange(m.id)}
-                style={{
-                  padding: '8px 10px',
-                  backgroundColor: currentMode === m.id ? 'var(--bg-elevated)' : 'var(--bg-surface)',
-                  border: currentMode === m.id ? '2px solid var(--text-primary)' : '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-sm)',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>{m.label}</div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{m.desc}</div>
-              </button>
-            ))}
+            ).map((m) => {
+              const isSelected = currentMode === m.id || (m.id === 'technical_review' && currentMode === 'developer') || (m.id === 'simplified_version' && currentMode === 'simple');
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => handleModeChange(m.id)}
+                  style={{
+                    padding: '12px 14px',
+                    backgroundColor: isSelected ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+                    border: isSelected ? '2px solid var(--text-primary)' : '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{m.label}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.4 }}>{m.desc}</div>
+                </button>
+              );
+            })}
           </div>
         </div>
 

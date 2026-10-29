@@ -6,14 +6,17 @@ import { Button } from '../ui/Button';
 interface FindingCardProps {
   finding: Finding;
   onViewEvidence: (evidence: EvidenceItem[], title: string) => void;
+  mode?: 'technical_review' | 'simplified_version';
 }
 
-export const FindingCard: React.FC<FindingCardProps> = ({ finding, onViewEvidence }) => {
+export const FindingCard: React.FC<FindingCardProps> = ({ finding, onViewEvidence, mode = 'technical_review' }) => {
+  const isSimplified = mode === 'simplified_version';
+
   return (
     <div
       style={{
-        backgroundColor: 'var(--bg-surface)',
-        border: '1px solid var(--border-subtle)',
+        backgroundColor: '#222222',
+        border: '1px solid #2e2e2e',
         borderRadius: 'var(--radius-lg)',
         padding: '18px 20px',
         display: 'flex',
@@ -27,45 +30,51 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onViewEvidenc
             <Badge variant="severity" value={finding.severity}>
               {finding.severity}
             </Badge>
-            <Badge variant="verification" value={finding.verification_status}>
-              {finding.verification_status}
-            </Badge>
-            <span
-              className="mono"
-              style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
-            >
-              Agent: {finding.agent_id}
-            </span>
-            {finding.agent_id === 'code_agent' && (
-              <span
-                className="mono"
-                style={{
-                  fontSize: '10px',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                  color: '#10b981',
-                  fontWeight: 600,
-                }}
-              >
-                Gemini
-              </span>
+            {!isSimplified && (
+              <>
+                <Badge variant="verification" value={finding.verification_status}>
+                  {finding.verification_status}
+                </Badge>
+                <span
+                  className="mono"
+                  style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
+                >
+                  Agent: {finding.agent_id}
+                </span>
+                {finding.agent_id === 'code_agent' && (
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: '10px',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                      color: '#10b981',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Gemini
+                  </span>
+                )}
+              </>
             )}
           </div>
-          <h4 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
+          <h4 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'Space Grotesk, sans-serif' }}>
             {finding.title}
           </h4>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          <span
-            className="mono"
-            style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
-            title={finding.confidence_interpretation}
-          >
-            Conf: {Math.round(finding.confidence * 100)}%
-          </span>
-          {finding.evidence_items && finding.evidence_items.length > 0 && (
+          {!isSimplified && (
+            <span
+              className="mono"
+              style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
+              title={finding.confidence_interpretation}
+            >
+              Conf: {Math.round(finding.confidence * 100)}%
+            </span>
+          )}
+          {!isSimplified && finding.evidence_items && finding.evidence_items.length > 0 && (
             <Button
               size="sm"
               variant="secondary"
@@ -87,23 +96,28 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onViewEvidenc
           gridTemplateColumns: '1fr 1fr',
           gap: '12px',
           padding: '12px',
-          backgroundColor: 'var(--bg-elevated)',
+          backgroundColor: '#161616',
+          border: '1px solid #2e2e2e',
           borderRadius: 'var(--radius-md)',
           fontSize: '12px',
         }}
       >
         <div>
-          <strong style={{ color: 'var(--text-primary)' }}>Impact: </strong>
+          <strong style={{ color: 'var(--text-primary)' }}>
+            {isSimplified ? 'Why does it matter?' : 'Technical Root Cause:'}{' '}
+          </strong>
           <span style={{ color: 'var(--text-secondary)' }}>{finding.impact}</span>
         </div>
         <div>
-          <strong style={{ color: 'var(--text-primary)' }}>Remediation: </strong>
+          <strong style={{ color: '#10b981' }}>
+            {isSimplified ? 'How do we fix it?' : 'Specific Remediation Steps:'}{' '}
+          </strong>
           <span style={{ color: 'var(--text-secondary)' }}>{finding.remediation}</span>
         </div>
       </div>
 
-      {finding.limitations && (
-        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+      {!isSimplified && finding.limitations && (
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'Space Mono, monospace' }}>
           LIMITATIONS: {finding.limitations}
         </div>
       )}

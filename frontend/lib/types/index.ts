@@ -285,6 +285,14 @@ export interface Review {
     conflicts_identified?: Array<any>;
     prompt_version?: string;
     audited_at?: string;
+    quality_scores?: {
+      security_score?: number;
+      performance_score?: number;
+      maintainability_score?: number;
+      reliability_score?: number;
+      test_coverage_score?: number;
+      overall_architecture_score?: number;
+    };
   };
   tasks: AgentTask[];
   skipped_agents?: Array<{ agent_id?: string; agent?: string; name?: string; reason: string }>;
@@ -300,7 +308,7 @@ export interface ReviewReport {
   status: string;
   commit_sha?: string;
   source_snapshot_id?: string;
-  presentation_mode?: 'simple' | 'developer' | 'professional' | 'executive';
+  presentation_mode?: 'technical_review' | 'simplified_version' | 'developer' | 'simple' | 'professional' | 'executive';
   summary?: string;
   limitations?: string;
   total_findings: number;

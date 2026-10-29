@@ -522,7 +522,34 @@ The FastAPI application (`backend/app/main.py`) coordinates services through dep
 * **Database State Resilience:** SQLite relationships use `lazy="selectin"` to avoid SQLAlchemy async greenlet concurrency issues.
 * **Status Tracking via `THE_DATA.md`:** Project implementation status, defects, verified workflows, and version milestones are tracked systematically in `THE_DATA.md`.
 
-*Implementation Evidence: `backend/app/prompts/registry.py`, `backend/app/db/models/__init__.py`, `THE_DATA.md`.*
+### 16.4 Dual-Mode Persona Architecture & Quantitative Granular Scoring (Release v1.3.0)
+To eliminate ambiguous, open-ended natural language generation for core analytical reviews, M-ARCH enforces a strict **Dual-Mode Persona Architecture**:
+
+1. **Technical Review Mode (`technical_review`):**
+   * **Audience:** Senior Software Engineers, Technical Leads, and System Architects.
+   * **Focus:** Empirical root cause analysis, exact file paths, line coordinates, and explicit code-level remediation steps.
+   * **Structure:** `Issue Identified` -> `Technical Root Cause` -> `Specific Remediation Steps`.
+   * **Strict Prohibitions:** Basic programming explanations, conversational analogies, and filler text are strictly prohibited. Pure code-centric vocabulary is enforced.
+   * **Evidence Requirement:** Every critique MUST be mapped to a specific file path and exact line numbers within the immutable snapshot; critiques failing citation validation are discarded.
+
+2. **Simplified Version Mode (`simplified_version`):**
+   * **Audience:** Project Managers, Business Executives, and Non-Technical Stakeholders.
+   * **Focus:** Real-world impact of the defect and conceptual solution mechanics.
+   * **Structure:** `What is the problem?` -> `Why does it matter?` -> `How do we fix it?`.
+   * **Strict Prohibitions:** Specific file paths, line numbers, code snippets, and architectural jargon (e.g., "AST parsing", "sanitization", "dependency injection") are strictly forbidden. Simple everyday analogies are utilized.
+
+3. **Quantitative Granular Scoring & SVG Radar Charting:**
+   * The `evidence_verifier` agent computes deterministic quantitative integer scores ($1-10$ scale) for six distinct dimensions:
+     - `security_score` ($1-10$)
+     - `performance_score` ($1-10$)
+     - `maintainability_score` ($1-10$)
+     - `reliability_score` ($1-10$)
+     - `test_coverage_score` ($1-10$)
+     - `overall_architecture_score` ($1-10$)
+   * Scores are rendered via a bespoke SVG 5-axis Radar Chart and metric progress bars (`QualityRadarChart.tsx`) in pure React/TypeScript, adhering strictly to the matte dark design theme (`#161616` background, `#222222` surface, `#2e2e2e` borders) with `Space Grotesk` and `Space Mono` typography.
+   * Native architecture graph topology extraction (`topology_extraction_v1_0`) outputs native `{nodes: [...], edges: [...]}` graph schema with traceable node provenance (`detected`, `inferred`, `unverified`).
+
+*Implementation Evidence: `backend/app/prompts/registry.py` (v1.3.0), `backend/app/services/reports/exporter.py`, `frontend/components/reviews/QualityRadarChart.tsx`, `THE_DATA.md`.*
 
 ---
 
@@ -705,7 +732,7 @@ All endpoints are implemented in `backend/app/api/v1/endpoints/`:
 | `GET` | `/api/v1/reviews` | Reviews | List historical review runs | `endpoints/reviews.py` |
 | `GET` | `/api/v1/reviews/{id}` | Reviews | Get detailed review report, findings, and tasks | `endpoints/reviews.py` |
 | `GET` | `/api/v1/reviews/{id}/events` | Reviews | Server-Sent Events (SSE) stream for live updates | `endpoints/reviews.py` |
-| `GET` | `/api/v1/reviews/{id}/report` | Reviews | Export review in 4 presentation modes (developer, simple, professional, executive) | `endpoints/reviews.py` |
+| `GET` | `/api/v1/reviews/{id}/report` | Reviews | Export review in Dual-Mode persona formats (technical_review, simplified_version) | `endpoints/reviews.py` |
 | `GET` | `/api/v1/agents` | Agents | List registered A2A agent cards & live states | `endpoints/agents.py` |
 | `GET` | `/api/v1/agents/{id}/card` | Agents | Retrieve official A2A AgentCard protobuf metadata | `endpoints/agents.py` |
 | `GET` | `/api/v1/agents/{id}/health` | Agents | Diagnostic check for specific agent connectivity | `endpoints/agents.py` |

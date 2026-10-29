@@ -270,7 +270,7 @@ class ReviewReportResponse(BaseModel):
     status: str
     commit_sha: Optional[str] = None
     source_snapshot_id: Optional[str] = None
-    presentation_mode: str = "developer"
+    presentation_mode: str = "technical_review"
     summary: Optional[str] = None
     limitations: Optional[str] = None
     total_findings: int

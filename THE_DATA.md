@@ -2,10 +2,56 @@
 
 ## Current Status
 
-- Current version: 1.2.2
-- Last updated: 2026-10-28
-- Current focus: Dedicated Google Gemini Provider for Code Review Agent, Multi-Agent Architecture Review & Code Hygiene with Project-Adaptive Profiling, Evidence-Backed Visualizations, End-to-End Grounding Quality Gates, and 4 Canonical Presentation Modes.
-- Overall state: Fully implemented, migrated, and verified across both backend (Python/FastAPI) and frontend (Next.js 14/TypeScript). Automated test suites (`test_gemini_code_agent.py`, `test_v1_2_improvements.py`, `test_pipeline.py`, `test_upload_pipeline.py`) pass 100%. Next.js production build (`npm run build`) compiles cleanly across all routes. Live health checks on Groq, Ollama, and Gemini active.
+- Current version: 1.3.0
+- Last updated: 2026-10-29
+- Current focus: Strict Dual-Mode Persona Architecture (Technical Review vs Simplified Version), Granular Quantitative Scoring (1-10) with SVG Radar & Bar Charting, Topology Graph Extraction, Dedicated Google Gemini Provider for Code Review Agent, Multi-Agent Architecture Review & Code Hygiene with Project-Adaptive Profiling.
+- Overall state: Fully implemented, migrated, and verified across both backend (Python/FastAPI) and frontend (Next.js 14/TypeScript). Automated test suites (`test_v1_3_dual_mode_and_scoring.py`, `test_gemini_code_agent.py`, `test_v1_2_improvements.py`, `test_pipeline.py`, `test_upload_pipeline.py`) pass 100%. Next.js production build (`npm run build`) compiles cleanly across all routes. Live health checks on Groq, Ollama, and Gemini active.
+
+---
+
+## Completed in Version 1.3.0 (2026-10-29)
+
+### 1. Strict Dual-Mode Persona Architecture
+- [x] **Discarded 4-Tab Model:** Fully replaced the legacy 4-tab model with a strict dual-mode presentation architecture:
+  - `Technical Review`: Root cause analysis, exact file paths, line numbers, and explicit remediation steps. Pure code-centric technical vocabulary for senior engineers. Analogies, filler text, and introductory explanations strictly forbidden.
+  - `Simplified Version`: Real-world impact, general concepts, plain everyday language, simple analogies. Architectural and code jargon (AST parsing, sanitization, dependency injection, exact file paths, line numbers, code snippets) strictly forbidden.
+- [x] **Versioned Prompt `dual_mode_synthesis_v1_3` (`backend/app/prompts/registry.py`):**
+  - Templatized with strict `# ROLE`, `# TARGET AUDIENCE MODE`, `# STRICT AUDIENCE CONSTRAINTS`, and `# RAW FINDINGS DATA`.
+- [x] **Report Exporter Dual-Mode Formatting (`backend/app/services/reports/exporter.py`):**
+  - Standardized `format_finding_item`, `generate_markdown_report`, and `generate_html_report`.
+  - In `simplified_version`: Line references replaced with "General System Concept", evidence excerpts suppressed, sections formatted as "What is the problem?", "Why does it matter?", "How do we fix it?".
+  - In `technical_review`: Formatted as "Issue Identified", "Technical Root Cause", "Specific Remediation Steps", authentic file:line references, and syntax-highlighted code excerpts.
+  - Backward compatibility aliases preserved (`developer` -> `technical_review`, `simple` -> `simplified_version`).
+- [x] **Export Report Modal (`frontend/components/reviews/ExportReportModal.tsx`):**
+  - Redesigned with dual-mode selectors for `Technical Review` and `Simplified Version`.
+- [x] **Review Detail Page (`frontend/app/(dashboard)/reviews/[id]/page.tsx`):**
+  - Replaced legacy 4 tabs with 2 Dual-Mode buttons.
+  - FindingCard dynamically adapts to active mode (displays Technical Root Cause & Remediation Steps vs Real-World Impact & Plain Fixes).
+
+### 2. Evidence-Based Visualization & Quantitative Granular Scoring
+- [x] **Quantitative Integer Scoring (1-10) (`backend/app/agents/verifier/agent.py`):**
+  - Computes 6 granular code hygiene and architecture metrics (1-10 scale): `security_score`, `performance_score`, `maintainability_score`, `reliability_score`, `test_coverage_score`, and `overall_architecture_score`.
+  - Stored in `review.evidence_verification_summary.quality_scores`.
+- [x] **Bespoke Quality Radar & Bar Chart (`frontend/components/reviews/QualityRadarChart.tsx`):**
+  - Pure React/TypeScript SVG 5-axis Radar chart and granular progress bars.
+  - Zero external chart dependencies, zero hydration mismatch.
+  - Strict matte dark theme (`#161616` background, `#222222` surface, `#2e2e2e` borders) with `Space Grotesk` and `Space Mono` typography.
+- [x] **Native Architecture Graph Topology Extraction (`backend/app/prompts/registry.py` & `orchestrator/agent.py`):**
+  - Registered `topology_extraction_v1_0` prompt outputting native `{nodes: [...], edges: [...]}` graph schema.
+  - Implemented `orchestrator.extract_architecture_topology()` with deterministic fallbacks.
+  - Traceable node evidence and provenance badges (`detected`, `inferred`, `unverified`).
+
+### 3. Automated Test Verification (100% Passed)
+- [x] **`backend/tests/test_v1_3_dual_mode_and_scoring.py`**:
+  - Test 1: Registered Prompts v1.3.0 -> **Passed [OK]**
+  - Test 2: Dual-Mode Persona Exporter Strict Constraints -> **Passed [OK]**
+  - Test 3: Verifier Quantitative Granular Scoring (1-10) -> **Passed [OK]**
+  - Test 4: Architecture Topology Extraction ({nodes, edges}) -> **Passed [OK]**
+  - **Result: 4/4 Tests Passed (100%)**
+- [x] **`backend/tests/test_gemini_code_agent.py`**:
+  - 6/6 Dedicated Gemini Provider tests -> **Passed [OK] (100%)**
+- [x] **`backend/tests/test_v1_2_improvements.py`**:
+  - 9/9 Comprehensive verification tests -> **Passed [OK] (100%)**
 
 ---
 
@@ -104,75 +150,15 @@
 - [x] **Multi-View Synthesis (`backend/app/agents/orchestrator/agent.py`):**
   - Adapts active specialists based on profile; records `skipped_agents` with explicit reasons.
   - Clean scans emit truthful notice: `"No critical static findings detected. The analyzed source files comply with baseline quality and security standards within the scope of static analysis."` along with explicit static limitations (cannot certify production readiness).
-  - Persists all 4 presentation views (`developer`, `simple`, `professional`, `executive`) in `Review.presentation_views`.
+  - Persists all presentation views in `Review.presentation_views`.
 - [x] **Export Engine (`backend/app/services/reports/exporter.py`):**
   - Generates Markdown and printable HTML reports tailored to the selected presentation mode without modifying canonical verified findings.
-- [x] **Frontend Review View & Export Modal (`frontend/app/(dashboard)/reviews/[id]/page.tsx` & `ExportReportModal.tsx`):**
-  - Added 4 presentation mode tabs switching display dynamically.
-  - Added `skipped_agents` adaptation banner.
-  - Updated export modal to allow downloading and printing in any presentation mode.
 
 ### 7. Database Integrity & Packaging
 - [x] Database backed up to `backend/data/m_arch.db.backup_v1_1` (80.6 MB preserved).
 - [x] Added SQLite columns dynamically in `session.py` (`user_context`, `skipped_agents`, `presentation_views`, `execution_summary`, etc.).
 - [x] Sanitized `.env.example` at root and backend; verified no credentials in git or packaging.
 - [x] Uploaded code remains isolated in `data/storage/` and is strictly inspected statically, never executed.
-
-### 8. Universal Review Accuracy, Structured Presentation & Project-Scoped Evaluation (v1.2.1)
-- [x] **Snapshot Evidence Grounding & Verification Gate (`backend/app/agents/verifier/agent.py`):**
-  - Standardized finding status labels: `verified`, `partially_supported`, `unsupported`, `duplicate`, `not_verifiable`.
-  - Exact file existence, line bounds, and disk excerpt matching with safe whitespace normalization and line drift correction.
-  - Dependency vulnerability de-escalation: unpinned dependencies in manifests are calibrated to `low`/`informational` hygiene risks rather than critical security exploits.
-  - Negative assertion filtering: non-findings ("Credentials Not Detected") are rejected or marked `unsupported`.
-  - Cross-agent deduplication with attribution merging (`code_agent, dependency_agent`) and consolidated package listings.
-  - Source coverage tracking: accurately counts `files_analyzed`, `files_skipped` (media, datasets, outputs), `files_unsupported`, and `total_files` with truthful coverage statements.
-  - Real-time audit API `POST /api/v1/reviews/{id}/verify-audit` for on-demand re-auditing against authentic project snapshots on disk.
-- [x] **Multi-Project Profiling Adaptation (`backend/app/services/profiling/profiler.py`):**
-  - Added framework signatures for Machine Learning and Computer Vision: `Streamlit`, `PyTorch`, `OpenCV`, `Ultralytics YOLO`, `Pandas`, `Pillow`, `Scikit-Learn`, `NumPy`.
-  - Provenance tracking: distinguishes purpose `detected from README.md`, `detected from docstring`, `inferred from entrypoint`, `user_supplied`, or `unknown`.
-  - Verified across two meaningfully different project types: `project_complete` (FastAPI backend service) and `swethankarthik/pothole-detection` (ML/Vision Streamlit application).
-- [x] **Zero Raw Markdown Structured Review UI (`frontend/components/ui/StructuredMarkdownViewer.tsx`):**
-  - Semantic HTML renderer converting headings, lists, callouts, blockquotes, code blocks, and markdown tables into clean React components without raw symbols (`##`, `**`, `|`).
-  - Redesigned `ReviewDetailPage` leading with project purpose, what was reviewed, main risks, next actions, what was not analyzed, detailed findings, and agent traces.
-  - Tesla-dashboard inspired matte metric cards and focused visuals: finding counts by severity, specialist breakdown, source coverage, and citation accuracy.
-  - Clean scan notice when zero findings are detected.
-  - Interactive "Audit & Verify Snapshot" button.
-- [x] **Project Catalog & Dedicated Detail Views (`frontend/app/(dashboard)/projects/`):**
-  - Project Catalog filter tabs (`All Projects`, `Active Projects`, `Needs Attention`).
-  - Safe automated test fixture cleanup endpoint (`DELETE /api/v1/projects/cleanup-tests`) and UI button.
-  - Added dedicated "Reviews & History" tab in `ProjectDetailPage` isolating reviews belonging strictly to the selected project snapshot.
-- [x] **Project-Scoped Evaluations (`frontend/app/(dashboard)/evaluations/page.tsx` & Backend):**
-  - Added `project_id` query parameter to `GET /api/v1/evaluations/metrics`.
-  - Top-level Project Selector allowing scoped inspection of individual projects alongside global system-wide aggregates.
-  - Mathematical ratios displayed as `numerator/denominator (percentage)` (e.g. `18/22 (81.8%)`).
-  - Empty state when insufficient review data exists for a project.
-
----
-
-## Verification Evidence
-
-All automated test suites executed and verified:
-
-1. **`backend/tests/test_v1_2_improvements.py`**:
-   - Test 1: Database Initialization & Column Migrations -> **Passed [OK]**
-   - Test 2: Deterministic Project Profiling Engine (App Type, Routes, Graph) -> **Passed [OK]**
-   - Test 3: Versioned Prompts Registry v1.2.0 (SHA-256 hashes) -> **Passed [OK]**
-   - Test 4: Evidence Verifier Quality Gate v1.2.0 (Grounded vs ungrounded vs duplicate) -> **Passed [OK]**
-   - Test 5: Orchestrator Clean Scan & 4 Presentation Modes -> **Passed [OK]**
-   - Test 6: Report Exporter in Canonical Presentation Modes -> **Passed [OK]**
-   - Test 7: Evaluator True Metrics & Terminal Statuses (0.5 completion rate) -> **Passed [OK]**
-   - Test 8: Server Restart In-Flight Job Recovery (recovering stuck jobs) -> **Passed [OK]**
-   - Test 9: Security & Packaging Sanity (.env.example sanitized) -> **Passed [OK]**
-   - **Result: 9/9 Tests Passed (100%)**
-
-2. **`backend/tests/test_pipeline.py`**:
-   - URL validation, v1.1.0 prompts, source ingestion, FTS5/vector hybrid RAG, quality gate -> **Passed [OK] (10/10)**
-
-3. **`backend/tests/test_upload_pipeline.py`**:
-   - ZIP extraction, multipart folder preservation, corrupt archive rejection, binary rejection -> **Passed [OK]**
-
-4. **Frontend Production Build (`cd frontend; npm run build`)**:
-   - Compiled successfully with 0 errors across all 11 static/dynamic pages.
 
 ---
 
@@ -183,4 +169,4 @@ All automated test suites executed and verified:
 2. **Workstation Hardware Specifications (`DOCUMENTATION.md`):**
    - Insert host workstation CPU model, installed RAM, and GPU model in Section 17.
 3. **Application UI Screenshots (`DOCUMENTATION.md`):**
-   - Capture live screenshots of the new Architecture Graph, User Context Editor, 4 Presentation Mode tabs, and Evaluations page for final thesis submission.
+   - Capture live screenshots of the new Architecture Graph, Quality Radar Chart, Dual-Mode Persona views, and Evaluations page for final thesis submission.

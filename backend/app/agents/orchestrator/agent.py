@@ -31,6 +31,8 @@ class OrchestratorAgent(BaseAgent):
         self.dependency_agent = DependencyAgent()
         self.verifier_agent = EvidenceVerifierAgent()
         self.synthesis_prompt_def = get_prompt_definition("orchestrator_synthesis_v1_2")
+        self.dual_mode_prompt_def = get_prompt_definition("dual_mode_synthesis_v1_3")
+        self.topology_prompt_def = get_prompt_definition("topology_extraction_v1_0")
 
     async def run_review(
         self,
@@ -310,6 +312,7 @@ class OrchestratorAgent(BaseAgent):
             "rejected_count": len(rejected_findings),
             "citation_coverage_score": verifier_res.get("citation_coverage_score", 1.0),
             "conflicts_identified": verifier_res.get("conflicts_identified", []),
+            "quality_scores": verifier_res.get("quality_scores", {}),
             "prompt_version": verifier_res.get("prompt_version")
         }
         await session.commit()
@@ -429,23 +432,18 @@ class OrchestratorAgent(BaseAgent):
             for t in (review.tasks or [])
         ]
 
+        tech_md = generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="technical_review", profile=prof_dict)
+        tech_html = generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="technical_review", profile=prof_dict)
+        simple_md = generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="simplified_version", profile=prof_dict)
+        simple_html = generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="simplified_version", profile=prof_dict)
+
         review.presentation_views = {
-            "simple": {
-                "markdown": generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="simple", profile=prof_dict),
-                "html": generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="simple", profile=prof_dict)
-            },
-            "developer": {
-                "markdown": generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="developer", profile=prof_dict),
-                "html": generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="developer", profile=prof_dict)
-            },
-            "professional": {
-                "markdown": generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="professional", profile=prof_dict),
-                "html": generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="professional", profile=prof_dict)
-            },
-            "executive": {
-                "markdown": generate_markdown_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="executive", profile=prof_dict),
-                "html": generate_html_report(proj_name, question, review.status, review.summary or "", review.limitations or "", raw_findings, raw_tasks, mode="executive", profile=prof_dict)
-            }
+            "technical_review": {"markdown": tech_md, "html": tech_html},
+            "simplified_version": {"markdown": simple_md, "html": simple_html},
+            "developer": {"markdown": tech_md, "html": tech_html},
+            "simple": {"markdown": simple_md, "html": simple_html},
+            "professional": {"markdown": tech_md, "html": tech_html},
+            "executive": {"markdown": tech_md, "html": tech_html}
         }
 
         review.trace_metadata = {
@@ -550,6 +548,55 @@ Provide a structured executive synthesis and an explicit scope and limitations s
                 "model_used": "rules",
                 "fallback_used": False
             }
+
+    async def extract_architecture_topology(
+        self,
+        sources: List[Any],
+        profile_data: Optional[Dict[str, Any]] = None,
+        override_mode: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Extracts deterministic and evidence-backed architecture graph topology
+        in native JSON format {nodes: [...], edges: [...]} using topology_extraction_v1_0.
+        """
+        system_prompt = self.topology_prompt_def.format_system_prompt()
+        summary_lines = []
+        for s in sources[:40]:
+            p = getattr(s, "file_path", "") or (s.get("file_path", "") if isinstance(s, dict) else "")
+            if p:
+                summary_lines.append(f"- {p}")
+
+        user_prompt = f"""
+Project Sources ({len(sources)} files):
+{chr(10).join(summary_lines)}
+
+Detected Frameworks: {json.dumps(profile_data.get('frameworks', []) if profile_data else [])}
+Detected Database: {json.dumps(profile_data.get('database_technologies', []) if profile_data else [])}
+Detected Routes: {json.dumps(profile_data.get('routes', [])[:10] if profile_data else [])}
+
+Extract the architecture topology JSON with nodes and edges.
+"""
+        try:
+            resp = await self.query_model(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                json_mode=True,
+                override_mode=override_mode
+            )
+            cleaned = resp.content.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            parsed = json.loads(cleaned.strip())
+            if isinstance(parsed, dict) and "nodes" in parsed and "edges" in parsed:
+                return parsed
+        except Exception as e:
+            logger.warning(f"Model topology extraction failed, falling back to deterministic: {e}")
+
+        return profile_data.get("architecture_graph", {"nodes": [], "edges": []}) if profile_data else {"nodes": [], "edges": []}
 
     async def execute_task(self, *args, **kwargs):
         raise NotImplementedError("Use run_review for OrchestratorAgent")

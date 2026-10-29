@@ -94,6 +94,11 @@ class BaseAgent(ABC):
                         )
                     )
 
+                # Discard critiques without any valid supporting evidence or cited paths
+                if not ref_evidence_items:
+                    logger.info(f"Discarding critique '{item.get('title')}' - no cited line or file evidence.")
+                    continue
+
                 finding = FindingCreate(
                     agent_id=self.agent_id,
                     title=item.get("title", "Untitled Observation"),

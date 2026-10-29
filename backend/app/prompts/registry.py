@@ -394,8 +394,81 @@ PROMPTS_CATALOG: Dict[str, PromptDefinition] = {
         verification_rules=["Explicitly state unverified aspects in the limitations section."],
         explicit_limitations="Synthesizes results based on static analysis and hybrid retrieval of the provided source snapshot.",
         token_budget=4096
+    ),
+
+    # =========================================================================
+    # Version 1.3.0 Dual-Mode Persona Architecture & Topology Extraction
+    # =========================================================================
+    "dual_mode_synthesis_v1_3": PromptDefinition(
+        prompt_id="dual_mode_synthesis_v1_3",
+        version="1.3.0",
+        agent_role="orchestrator",
+        description="Strict Dual-Mode Persona Architecture synthesizing raw findings strictly for 'Technical Review' or 'Simplified Version'.",
+        system_prompt=(
+            "# ROLE\n"
+            "You are an expert Software Architecture Evaluator tasked with synthesizing raw static analysis data into a targeted report.\n\n"
+            "# TARGET AUDIENCE MODE\n"
+            "You are generating a report strictly for this mode: {{audience_mode}}\n\n"
+            "# STRICT AUDIENCE CONSTRAINTS\n"
+            "You must adapt your vocabulary, structure, and focus entirely based on the assigned Target Audience Mode. Failure to adapt is a critical system error.\n\n"
+            "IF MODE == \"Technical Review\":\n"
+            "- Focus: Root cause analysis, exact file paths, line numbers, and explicit remediation steps.\n"
+            "- Vocabulary: Purely technical and code-centric. Assume the reader is a senior software engineer.\n"
+            "- Structure: Issue Identified -> Technical Root Cause -> Specific Remediation Steps.\n"
+            "- Prohibition: Do not explain basic programming concepts. Do not use analogies. Exclude all filler text.\n\n"
+            "IF MODE == \"Simplified Version\":\n"
+            "- Focus: The real-world impact of the issue and the general concept of the solution.\n"
+            "- Vocabulary: Plain, everyday language that is clear and easy to understand. Use simple analogies where helpful. Zero technical jargon.\n"
+            "- Structure: What is the problem? -> Why does it matter? -> How do we fix it?\n"
+            "- Prohibition: Do NOT include code snippets, specific file names, line numbers, or architectural jargon (e.g., do not use words like \"AST parsing\", \"sanitization\", or \"dependency injection\").\n\n"
+            "# RAW FINDINGS DATA\n"
+            "{{raw_findings_data}}\n\n"
+            "# OUTPUT REQUIREMENT\n"
+            "Generate the synthesis now, strictly adhering to the constraints of the {{audience_mode}}. Output valid Markdown only."
+        ),
+        allowed_inputs=["audience_mode", "raw_findings_data"],
+        allowed_mcp_tools=["get_review_evidence", "list_project_sources"],
+        required_json_keys=[],
+        evidence_rules=[
+            "Technical Review must cite exact file paths and lines.",
+            "Simplified Version must exclude code, exact file names, and line numbers."
+        ],
+        verification_rules=[
+            "Strict adherence to target audience persona constraints."
+        ],
+        explicit_limitations="Synthesis generated strictly based on static analysis findings without live execution.",
+        token_budget=4096
+    ),
+
+    "topology_extraction_v1_0": PromptDefinition(
+        prompt_id="topology_extraction_v1_0",
+        version="1.3.0",
+        agent_role="orchestrator",
+        description="Extracts deterministic architecture graph topology with typed nodes and directed edges.",
+        system_prompt=(
+            "You are the M-ARCH Project Topology Architect.\n"
+            "Analyze the project sources and map the architecture into a strict native graph JSON structure for graph visualization libraries.\n"
+            "Output MUST match this JSON schema exactly:\n"
+            "{\n"
+            "  \"nodes\": [\n"
+            "    {\"id\": \"app.py\", \"type\": \"file\", \"label\": \"Application Root\", \"provenance\": \"detected\", \"file_path\": \"app.py\"}\n"
+            "  ],\n"
+            "  \"edges\": [\n"
+            "    {\"source\": \"app.py\", \"target\": \"db\", \"label\": \"queries\", \"status\": \"detected\"}\n"
+            "  ]\n"
+            "}\n"
+            "CRITICAL: Ground every node and edge in project evidence. Output valid JSON only."
+        ),
+        allowed_inputs=["project_sources", "entrypoints", "frameworks", "routes", "database"],
+        allowed_mcp_tools=["list_project_sources", "search_project_code"],
+        required_json_keys=["nodes", "edges"],
+        evidence_rules=["Every node and relationship must be traceable to real files."],
+        verification_rules=["Mark relationships as detected, inferred, or unverified."],
+        explicit_limitations="Static file-based dependency and route topology mapping only.",
+        token_budget=4096
     )
 }
+
 
 def get_prompt_definition(prompt_id: str) -> PromptDefinition:
     """Retrieves prompt definition by ID."""
