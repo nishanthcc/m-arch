@@ -33,3 +33,9 @@ npm run dev
 ```
 
 Visit [http://localhost:3000](http://localhost:3000) to start reviewing projects.
+
+
+
+.\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload
+
+
